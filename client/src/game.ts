@@ -138,6 +138,9 @@ export class Game {
     }
     if (phase === "round" && !this.wasRound) {
       this.wasRound = true;
+      // A text field that kept focus would swallow WASD; the fight gets the keyboard.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      this.input.clear();
       this.lastCount = -1;
       this.hud.countdown = { n: 0, age: 0 };
       audio.sfx("fight", 0, 0, { positional: false });

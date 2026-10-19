@@ -73,7 +73,8 @@ export class Input {
         return;
       }
       if (e.target instanceof HTMLInputElement) return;
-      if (e.code === "Tab" || e.code === "Space" || e.code.startsWith("Arrow")) e.preventDefault();
+      // Let Space/Enter press a focused menu button; otherwise keep the page from scrolling.
+      if ((e.code === "Tab" || e.code === "Space" || e.code.startsWith("Arrow")) && !(e.target instanceof HTMLButtonElement)) e.preventDefault();
       if (!this.down.has(e.code)) this.edges.add(e.code);
       this.down.add(e.code);
     });
