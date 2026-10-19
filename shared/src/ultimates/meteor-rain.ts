@@ -23,6 +23,18 @@ const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 const STRIDE = [5, 7, 11, 13, 3, 1].find((s) => gcd(s, C.count) === 1) ?? 1;
 
 function meteorPoint(w: World, area: Effect, i: number): { x: number; y: number } {
+  // Every `trackEvery`-th meteor hunts an enemy standing in the area (leading their
+  // movement by half the warning time), so the rain is a real threat, not just scenery.
+  if (i % C.trackEvery === 1) {
+    const inArea = [...w.players.values()].filter((o) => o.alive && o.id !== area.owner && Math.hypot(o.x - area.x, o.y - area.y) < area.r + o.r);
+    const t = inArea.length ? inArea[w.rng.int(inArea.length)] : undefined;
+    if (t) {
+      const lead = C.warn * 0.5;
+      const x = t.x + (t.vx + t.px) * lead + w.rng.range(-C.trackJitter, C.trackJitter);
+      const y = t.y + (t.vy + t.py) * lead + w.rng.range(-C.trackJitter, C.trackJitter);
+      if (w.insideArena(x, y, 20)) return { x, y };
+    }
+  }
   const k = (i * STRIDE) % C.count;
   const rr = area.r * Math.sqrt((k + 0.5) / C.count);
   const a = area.angle + k * GOLDEN;

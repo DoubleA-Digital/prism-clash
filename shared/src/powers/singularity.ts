@@ -38,7 +38,7 @@ export const singularity = definePower({
     const sin = Math.sin(p.aim);
     w.spawnProjectile({
       owner: p.id, kind: PROJ.singularityOrb, source: "singularity", x: p.x + cos * 34, y: p.y + sin * 34,
-      vx: cos * C.speed, vy: sin * C.speed, r: 16, damage: 0, life: C.fuse,
+      vx: cos * C.speed, vy: sin * C.speed, r: C.orbRadius, damage: 0, life: C.fuse,
     });
     return true;
   },

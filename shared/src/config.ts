@@ -141,7 +141,7 @@ export const HAZARD_TICK = 0.25;
 /** Powers. Cooldowns are in seconds; everything a power uses lives here. */
 export const POWERS = {
   chronoRewind: { cooldown: 14, window: 2.5, trailPoints: 9, trailLife: 1.1, arriveInvuln: 0.2 },
-  singularity: { cooldown: 16, speed: 360, fuse: 0.8, duration: 2.5, radius: 330, pull: 1250, projectilePull: 2400, damage: 25, coreRadius: 70, detonateRadius: 160 },
+  singularity: { cooldown: 16, speed: 540, orbRadius: 28, fuse: 0.8, duration: 2.5, radius: 330, pull: 1900, projectilePull: 2400, damage: 25, coreRadius: 70, detonateRadius: 160 },
   mirrorSelf: { cooldown: 18, duration: 6, damageMult: 0.4, fireCooldown: 0.34, hp: 33, radius: 26, aimDistance: 420 },
   portalPair: { cooldown: 15, duration: 10, radius: 46, exitCooldown: 0.35, placeWindow: 6 },
   stormTether: { cooldown: 13, speed: 1500, range: 720, maxLength: 470, snapDamage: 30, chipDps: 3, duration: 5, boltDamage: 6, boltRadius: 10, chipInterval: 0.5, snapLinger: 0.45, slack: 140 },
@@ -182,12 +182,12 @@ export const ULTIMATES = {
   /** Meteors land at evenly spread (jittered) points of a disc centered `centerDist` along your
    *  aim (pulled back toward you if that's outside the arena). Each shows its warning circle
    *  for `warn` seconds; impacts are spread over `duration`. */
-  meteorRain: { count: 12, duration: 3, radius: 420, impactRadius: 95, damage: 22, warn: 0.75, centerDist: 420, jitter: 0.35, knock: 420 },
+  meteorRain: { count: 12, duration: 3, radius: 420, impactRadius: 95, damage: 24, warn: 0.75, centerDist: 420, jitter: 0.35, knock: 420, trackEvery: 2, trackJitter: 40 },
   /** fireRateMult divides the shot cooldown (and shots cost no ammo); reloadMult speeds ammo refill. */
   overdrive: { duration: 6, fireRateMult: 2, reloadMult: 2.2 },
   /** Pull is a per-second impulse (steady drift ≈ 180 u/s, slower than walking, so you can
    *  fight it), scaled from nearMult on the line to farMult at farRange. */
-  riftCollapse: { pullTime: 3, pull: 900, nearMult: 1.25, farMult: 0.6, farRange: 1200, closeDamage: 45, closeRadius: 150, closeKnock: 650, halfLength: 900, afterglow: 0.5 },
+  riftCollapse: { pullTime: 3, pull: 1250, nearMult: 1.25, farMult: 0.6, farRange: 1200, closeDamage: 45, closeRadius: 150, closeKnock: 650, halfLength: 900, afterglow: 0.5 },
   echoStorm: { duration: 8, echoDelay: 0.25 },
   /** While charging you're immune (damage is absorbed), slowed and can't shoot. */
   finalStand: { charge: 3, baseDamage: 20, absorbMult: 0.8, maxDamage: 75, radius: 380, knockback: 900 },

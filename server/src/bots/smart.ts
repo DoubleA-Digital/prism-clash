@@ -2,9 +2,10 @@
 // → steer, aim with human-like error and reaction delay, and use powers by their hints.
 
 import {
-  BOTS, BTN, NET, powerDef, Rng, SHOT, ultDef,
+  BOTS, BTN, NET, powerDef, Rng, SHOT,
   type Difficulty, type InputFrame, type Player, type PowerId, type Projectile, type UltId, type World,
 } from "@prism/shared";
+import { chooseCast } from "./tactics";
 
 type Mode = "fight" | "cover" | "zone" | "pickup" | "roam";
 
@@ -28,7 +29,11 @@ export class SmartBrain {
   /** Where we believe the target is (lags by reaction time). */
   private seen: { x: number; y: number; vx: number; vy: number; at: number } | null = null;
   private wantDash = false;
-  private castQueue: number[] = [];
+  private castQueue: { slot: number; aim: number | null }[] = [];
+  /** Seconds since each slot started its recast window (for recast timing). */
+  private slotAge = [0, 0, 0];
+  private threatCount = 0;
+  private myId = 0;
   private roamX = 0;
   private roamY = 0;
   private stuckT = 0;
@@ -60,6 +65,7 @@ export class SmartBrain {
   }
 
   think(w: World, me: Player): InputFrame {
+    this.myId = me.id;
     const dt = w.dt;
     this.thinkT -= dt;
     if (this.thinkT <= 0) {
@@ -93,9 +99,15 @@ export class SmartBrain {
     }
     const cast = this.castQueue.shift();
     if (cast !== undefined) {
-      const btn = cast === 0 ? BTN.p1 : cast === 1 ? BTN.p2 : cast === 2 ? BTN.p3 : BTN.ult;
+      const btn = cast.slot === 0 ? BTN.p1 : cast.slot === 1 ? BTN.p2 : cast.slot === 2 ? BTN.p3 : BTN.ult;
       pressed |= btn;
       buttons |= btn;
+      // Aimed casts use the tactic's lead aim plus this difficulty's error.
+      if (cast.aim !== null) aim = cast.aim + ((this.rng.next() * 2 - 1) * this.cfg.aimErrorDeg * 0.8 * Math.PI) / 180;
+    }
+    for (let i = 0; i < 3; i++) {
+      const s = me.slots[i];
+      this.slotAge[i] = s && s.recast > 0 ? (this.slotAge[i] ?? 0) + dt : 0;
     }
     return { seq: ++this.seq, mx: this.moveX, my: this.moveY, aim, buttons, pressed, dt, shotId: 0 };
   }
@@ -110,7 +122,8 @@ export class SmartBrain {
     const now = w.time;
     if (!this.seen || now - this.seen.at >= this.cfg.reaction) {
       this.seen = { x: t.x, y: t.y, vx: t.vx + t.px, vy: t.vy + t.py, at: now };
-      this.aimErr = ((this.rng.next() * 2 - 1) * this.cfg.aimErrorDeg * Math.PI) / 180;
+      const blind = (w.players.get(this.myId)?.status.blinded ?? 0) > 0 ? 4 : 1;
+      this.aimErr = ((this.rng.next() * 2 - 1) * this.cfg.aimErrorDeg * blind * Math.PI) / 180;
     } else {
       // Dead-reckon between updates.
       const k = 1 / NET.tickRate;
@@ -149,6 +162,7 @@ export class SmartBrain {
       if (cx * cx + cy * cy < (me.r + pr.r + 18) ** 2) threats.push({ pr, t });
     }
 
+    this.threatCount = threats.length;
     const z = w.zone;
     const dz = Math.hypot(me.x - z.x, me.y - z.y);
     const zoneDanger = z.stage >= 0 && dz > z.r - 140;
@@ -250,7 +264,28 @@ export class SmartBrain {
     }
     // Hazards: get out of lava and slow fields (if not our own).
     for (const e of w.effects.values()) {
-      if ((e.kind === "lava" || e.kind === "molten" || e.kind === "slowField" || e.kind === "meteorWarn") && e.owner !== me.id) {
+      if (e.owner === me.id) continue;
+      if (e.kind === "rift" || (e.kind === "singularity" && Math.hypot(me.x - e.x, me.y - e.y) < e.r)) {
+        // Bots notice big threats only after their reaction time, and not every bot reacts well.
+        if (e.age < this.cfg.reaction + 0.3) continue;
+        // Run from black holes and rifts (rift: away from the nearest point on the line).
+        let hx = e.x;
+        let hy = e.y;
+        if (e.kind === "rift") {
+          const dx = e.x2 - e.x;
+          const dy = e.y2 - e.y;
+          const l2 = dx * dx + dy * dy || 1;
+          const k = Math.max(0, Math.min(1, ((me.x - e.x) * dx + (me.y - e.y) * dy) / l2));
+          hx = e.x + dx * k;
+          hy = e.y + dy * k;
+          if (Math.hypot(me.x - hx, me.y - hy) > 320) continue;
+        }
+        const d = Math.hypot(me.x - hx, me.y - hy) || 1;
+        mx += ((me.x - hx) / d) * 2.2 * this.cfg.dodgeSkill;
+        my += ((me.y - hy) / d) * 2.2 * this.cfg.dodgeSkill;
+        continue;
+      }
+      if (e.kind === "lava" || e.kind === "molten" || e.kind === "slowField" || e.kind === "meteorWarn" || (e.kind === "shockwave" && e.n === 0) || e.kind === "bubble") {
         const dx = me.x - e.x;
         const dy = me.y - e.y;
         const d = Math.hypot(dx, dy);
@@ -305,35 +340,16 @@ export class SmartBrain {
 
   private planCasts(w: World, me: Player) {
     if (this.castQueue.length) return;
-    if (this.rng.next() > this.cfg.castChance * 0.35) return;
-    const t = this.target;
-    const dist = t ? Math.hypot(t.x - me.x, t.y - me.y) : Infinity;
-    for (let i = 0; i < me.slots.length; i++) {
-      const s = me.slots[i];
-      if (!s) continue;
-      const def = powerDef(s.id);
-      if (!def) continue;
-      if (s.recast > 0) {
-        if (this.rng.next() < 0.25) this.castQueue.push(i);
-        continue;
-      }
-      if (s.cd > 0) continue;
-      const hint = def.bot;
-      const ok =
-        (hint.role === "attack" && t && dist < (hint.range ?? 600) && !w.blocked(me.x, me.y, t.x, t.y)) ||
-        (hint.role === "defend" && me.hp < (hint.hpBelow ?? 45)) ||
-        (hint.role === "mobility" && (this.mode === "zone" || this.mode === "cover" || (t && dist < 260))) ||
-        (hint.role === "buff" && t && dist < 650) ||
-        (hint.role === "zone" && t && dist < 450);
-      if (ok) {
-        this.castQueue.push(i);
-        return;
-      }
-    }
-    if (me.ult && me.ult.charge >= 100) {
-      const def = ultDef(me.ult.id);
-      const near = w.enemiesOf(me).filter((o) => Math.hypot(o.x - me.x, o.y - me.y) < 600).length;
-      if (def && (near >= def.bot.minTargets || (def.bot.hpBelow !== undefined && me.hp < def.bot.hpBelow) || (t && t.hp < 35 && dist < 500))) this.castQueue.push(3);
-    }
+    const past = w.pastState(me, 2.5);
+    const z = w.zone;
+    const plan = chooseCast(
+      {
+        w, me, target: this.target, threats: this.threatCount, recentLoss: past ? Math.max(0, past.hp - me.hp) : 0,
+        inZoneDanger: z.stage >= 0 && Math.hypot(me.x - z.x, me.y - z.y) > z.r - 60, eagerness: this.cfg.castChance * 0.4,
+        rand: () => this.rng.next(),
+      },
+      this.slotAge,
+    );
+    if (plan) this.castQueue.push(plan);
   }
 }

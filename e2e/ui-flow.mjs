@@ -45,9 +45,7 @@ await page.waitForTimeout(1500);
 await shot("reveal");
 
 if (process.argv.includes("--quick")) {
-  console.log(errors.length ? `ERRORS:
-${errors.join("
-")}` : "no console errors");
+  console.log(errors.length ? "ERRORS: " + errors.join(" | ") : "no console errors");
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }
