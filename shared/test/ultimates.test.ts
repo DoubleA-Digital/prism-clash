@@ -2,6 +2,7 @@
 // (meteor impacts, cooldown reset, rift pull + slam, echo doubling, absorb-and-release, homing).
 import { describe, expect, test } from "vitest";
 import {
+  addBush,
   allUlts, BTN, PF, ULT_IDS, ULTIMATES, World, pointSegment,
   type GameEvent, type InputFrame, type Player, type PowerId, type UltId,
 } from "@prism/shared";
@@ -25,9 +26,7 @@ interface Setup {
 }
 
 function setup(ult: UltId, enemyAt: [number, number][], powers: PowerId[] = []): Setup {
-  const w = new World("openVoid", 1 + enemyAt.length, 7);
-  w.arena.pillars = [];
-  w.arena.nebulas = [];
+  const w = new World("testYard", 7, { loot: false });
   const caster = w.addPlayer(1, "CASTER", 0, false);
   caster.x = 0;
   caster.y = 0;
@@ -113,10 +112,10 @@ describe("ultimates", () => {
     expect(s.w.hasStatus(s.caster, "overdrive")).toBe(true);
     expect([...s.w.effects.values()].some((e) => e.kind === "overdriveAura" && e.owner === 1)).toBe(true);
     s.run(60, () => frame(s.caster, BTN.shoot, 0));
-    // Normal fire is ammo-bound (~10 in 2s); overdrive is ~20.
+    // The pistol fires every 0.24s (~8 in 2s, plus a reload); overdrive doubles the rate and spends no ammo.
     const shots = s.events.filter((e) => e.t === "shoot" && e.by === 1).length;
-    expect(shots).toBeGreaterThanOrEqual(18);
-    expect(s.caster.ammo).toBe(5);
+    expect(shots).toBeGreaterThanOrEqual(15);
+    expect(s.caster.inv.weapons[0]?.mag).toBe(12);
   });
 
   test("rift collapse: pulls enemies toward the line, then slams anyone near it", () => {
@@ -172,8 +171,8 @@ describe("ultimates", () => {
     const s = setup("finalStand", [[200, 0], [1000, 400]]);
     const [close, away] = s.enemies as [Player, Player];
     castUlt(s);
-    expect(s.w.damage(s.caster, 30, close.id, "shot")).toBe(0);
-    expect(s.w.damage(s.caster, 20, away.id, "shot")).toBe(0);
+    expect(s.w.damage(s.caster, 30, close.id, "pistol")).toBe(0);
+    expect(s.w.damage(s.caster, 20, away.id, "pistol")).toBe(0);
     expect(s.caster.hp).toBe(100);
     expect(s.caster.absorbed).toBe(50);
     s.run(ticks(1), () => frame(s.caster, BTN.shoot, BTN.shoot));
@@ -189,14 +188,14 @@ describe("ultimates", () => {
     expect(s.w.hasStatus(s.caster, "finalStand")).toBe(false);
     expect(s.caster.absorbed).toBe(0);
     // Vulnerable again afterwards.
-    expect(s.w.damage(s.caster, 10, close.id, "shot")).toBe(10);
+    expect(s.w.damage(s.caster, 10, close.id, "pistol")).toBe(10);
     expect(finalStandDamage(10_000)).toBe(ULTIMATES.finalStand.maxDamage);
   });
 
   test("hunter's eye: reveals hidden enemies, marks each, and shots home in", () => {
     const s = setup("huntersEye", [[350, 180], [-700, -300]]);
     const [target] = s.enemies as [Player];
-    s.w.arena.nebulas = [{ x: -700, y: -300, r: 200 }];
+    addBush(s.w.map, -700, -300, 200);
     const hidden = s.enemies[1] as Player;
     expect(s.w.hiddenFrom(s.caster, hidden)).toBe(true);
     castUlt(s);

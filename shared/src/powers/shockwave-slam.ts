@@ -1,6 +1,6 @@
 // SHOCKWAVE SLAM: leap into the air (airborne: immune to ground hazards and shots, can't
 // shoot), then crash down. Everyone in the radius is hurt and blasted outward; anyone the
-// blast drives into a wall or pillar takes bonus slam damage.
+// blast drives into a wall takes bonus slam damage, and crates, glass and fences nearby crack.
 // Combo (Gravity Slam): blast an enemy into a Singularity's detonation zone and the black
 // hole's detonation damage doubles.
 //
@@ -8,7 +8,7 @@
 // caster is airborne (it tracks the landing spot), n = 1 after the slam (it tracks who was
 // knocked back, for the wall bonus and the combo, for comboWindow seconds).
 
-import { ARENA, POWERS } from "../config";
+import { POWERS, TERRAIN } from "../config";
 import { dist2 } from "../math/vec";
 import { definePower } from "../sim/hooks";
 import type { Effect } from "../sim/types";
@@ -43,9 +43,8 @@ function slam(w: World, e: Effect) {
     w.impulse(p, nx * C.knockback * f, ny * C.knockback * f);
     knocked.set(p.id, PENDING);
   }
-  for (const pl of w.arena.pillars) {
-    if (!pl.dead && dist2(e.x, e.y, pl.x, pl.y) < (C.radius * 0.6 + pl.r) ** 2) w.damagePillar(pl.id, 4, pl.x, pl.y);
-  }
+  // The impact cracks crates, glass and fences close to the landing spot.
+  w.damageArea(e.x, e.y, C.radius * 0.6, C.solidDamage, owner.id);
   w.emit({ t: "explode", x: e.x, y: e.y, r: C.radius, source: "shockwaveSlam", by: owner.id });
   e.n = 1;
   e.hits = knocked;
@@ -62,7 +61,7 @@ function aftermath(w: World, e: Effect) {
     if (!p || !p.alive) continue;
     if (state === PENDING && slams.has(id)) {
       e.hits.set(id, DONE_WALL);
-      w.damage(p, ARENA.wallSlamDamage * C.wallBonus, e.owner, "shockwaveSlam", { x: p.x, y: p.y });
+      w.damage(p, TERRAIN.wallSlamDamage * C.wallBonus, e.owner, "shockwaveSlam", { x: p.x, y: p.y });
     }
     for (const s of w.effects.values()) {
       if (s.kind !== "singularity" || s.dead || s.v >= 2) continue;

@@ -2,7 +2,7 @@
 // orbit (they stop doing damage). Recast, or let it run out, to fling them all outward as
 // your own shots. Catching shots frozen by a Time Bubble is the Frozen Harvest combo.
 
-import { POWERS, SHOT } from "../config";
+import { POWERS } from "../config";
 import { dist2, TAU } from "../math/vec";
 import { definePower } from "../sim/hooks";
 import type { Effect, Player, Projectile } from "../sim/types";
@@ -51,7 +51,7 @@ function release(w: World, e: Effect, owner: Player) {
     pr.vx = Math.cos(a) * C.releaseSpeed;
     pr.vy = Math.sin(a) * C.releaseSpeed;
     pr.life = C.releaseLife;
-    pr.damage = Math.max(pr.damage, SHOT.damage);
+    pr.damage = Math.max(pr.damage, C.minReleaseDamage);
     pr.shotId = 0;
     pr.portalCd = 0;
   });

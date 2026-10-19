@@ -4,7 +4,6 @@
 // source "decoySwarm" (r = flash radius, life = blind time) so every client sees the flash.
 
 import { POWERS } from "../config";
-import { dist2 } from "../math/vec";
 import { definePower } from "../sim/hooks";
 import type { Effect } from "../sim/types";
 import type { World } from "../sim/world";
@@ -29,21 +28,19 @@ function wander(w: World, e: Effect, dt: number) {
   e.x += e.vx * dt;
   e.y += e.vy * dt;
   if (!w.insideArena(e.x, e.y, e.r + 6)) {
-    // Bounce back toward the middle of the arena.
+    // Bounce back toward the middle of the map.
     e.x -= e.vx * dt;
     e.y -= e.vy * dt;
     e.angle = Math.atan2(-e.y, -e.x) + (w.rng.next() - 0.5);
     e.vx = Math.cos(e.angle) * C.wanderSpeed;
     e.vy = Math.sin(e.angle) * C.wanderSpeed;
   }
-  for (const pl of w.arena.pillars) {
-    if (pl.dead) continue;
-    const rr = pl.r + e.r;
-    if (dist2(e.x, e.y, pl.x, pl.y) >= rr * rr) continue;
-    const a = Math.atan2(e.y - pl.y, e.x - pl.x);
-    e.x = pl.x + Math.cos(a) * rr;
-    e.y = pl.y + Math.sin(a) * rr;
-    e.angle = a + (w.rng.next() - 0.5) * 1.2;
+  // Bump off walls and cover, wandering away from them.
+  const body = { x: e.x, y: e.y, vx: e.vx, vy: e.vy };
+  if (w.collideBody(body, e.r)) {
+    e.angle = Math.atan2(body.y - e.y, body.x - e.x) + (w.rng.next() - 0.5) * 1.2;
+    e.x = body.x;
+    e.y = body.y;
   }
 }
 

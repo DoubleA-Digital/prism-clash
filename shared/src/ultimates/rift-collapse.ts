@@ -1,4 +1,4 @@
-// RIFT COLLAPSE: tear a glowing rift through the arena along your aim (a segment through
+// RIFT COLLAPSE: tear a glowing rift across the map along your aim (a segment through
 // you, clipped to the walls). For 3s it drags everyone but you toward it, then slams shut:
 // heavy damage to anyone within closeRadius of the line. The rift is drawn for its whole
 // life with a danger band and a quickening pulse, so the slam is always readable.
@@ -16,15 +16,15 @@ const C = ULTIMATES.riftCollapse;
 export const RIFT_PULLING = 0;
 export const RIFT_CLOSED = 1;
 
-/** Distance from (x, y) along (dx, dy) to the arena wall (minus a margin), capped at max. */
+/** Distance from (x, y) along (dx, dy) to the map edge (minus a margin), capped at max.
+ *  The rift tears straight through buildings. */
 function reachWall(w: World, x: number, y: number, dx: number, dy: number, max: number): number {
+  const h = w.map.half - 10;
   let t = max;
-  for (const wall of w.arena.walls) {
-    const den = dx * wall.nx + dy * wall.ny;
-    if (den >= 0) continue;
-    const hit = ((x - wall.ax) * wall.nx + (y - wall.ay) * wall.ny - 10) / -den;
-    if (hit >= 0 && hit < t) t = hit;
-  }
+  if (dx > 1e-6) t = Math.min(t, (h - x) / dx);
+  if (dx < -1e-6) t = Math.min(t, (-h - x) / dx);
+  if (dy > 1e-6) t = Math.min(t, (h - y) / dy);
+  if (dy < -1e-6) t = Math.min(t, (-h - y) / dy);
   return Math.max(0, t);
 }
 
@@ -64,7 +64,7 @@ function slam(w: World, e: Effect) {
 export const riftCollapse = defineUlt({
   id: "riftCollapse",
   name: "Rift Collapse",
-  description: "Tear a rift through the arena along your aim. It drags enemies toward it for 3s, then slams shut for 45 to anyone near it.",
+  description: "Tear a rift across the map along your aim. It drags enemies toward it for 3s, then slams shut for 45 to anyone near it.",
   color: "#FF3DF0",
   drawIcon(ctx, size) {
     ultFrame(ctx, size, "#47063f");

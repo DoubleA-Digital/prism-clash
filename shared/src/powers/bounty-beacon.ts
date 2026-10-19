@@ -1,6 +1,6 @@
 // BOUNTY BEACON: put a price on the match leader's head. They glow gold for everyone for 6s,
-// can't hide in nebulae, and anyone who damages them gains ultimate charge (world.damage
-// handles the charge). A "beacon" effect follows each target to draw the pillar of light.
+// can't hide in bushes, and anyone who damages them gains ultimate charge (world.damage
+// handles the charge). A "beacon" effect follows each target to draw the column of light.
 
 import { POWERS } from "../config";
 import { dist2 } from "../math/vec";

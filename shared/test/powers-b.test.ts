@@ -1,7 +1,7 @@
 // Powers part B on the real World: Molten Path, Boomerang Glaive, Gravity Flip, Bounty Beacon,
 // Decoy Swarm, Shockwave Slam, Third-Party, plus the Event Horizon Blade and Gravity Slam combos.
 import { describe, expect, test } from "vitest";
-import { ARENA, BTN, POWERS, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
+import { addSolid, BTN, POWERS, TERRAIN, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
 import { bountyTargets } from "../src/powers/bounty-beacon";
 import { GLAIVE } from "../src/powers/boomerang-glaive";
 
@@ -32,9 +32,7 @@ interface Setup {
 }
 
 function setup(power: PowerId, enemyAt: [number, number][]): Setup {
-  const w = new World("openVoid", 1 + enemyAt.length, 11);
-  w.arena.pillars = [];
-  w.arena.nebulas = [];
+  const w = new World("testYard", 11, { loot: false });
   const caster = w.addPlayer(1, "CASTER", 0, false);
   caster.x = 0;
   caster.y = 0;
@@ -151,13 +149,12 @@ describe("Boomerang Glaive", () => {
     expect(m.fx("glaive").length).toBe(0);
   });
 
-  test("damages pillars and turns back when it hits one", () => {
+  test("chips a crate and turns back when it hits one", () => {
     const s = setup("boomerangGlaive", []);
-    s.w.arena.pillars = [{ id: 900001, x: 220, y: 0, r: 40, hp: 26, maxHp: 26, dead: false }];
+    const crate = addSolid(s.w.map, "crate", 200, -30, 260, 30);
     s.cast();
     s.run(ticks(0.3));
-    const pl = s.w.arena.pillars[0]!;
-    expect(pl.hp).toBeLessThan(26);
+    expect(crate.hp).toBeLessThan(crate.maxHp);
     const g = s.fx("glaive")[0];
     expect(g?.n).not.toBe(GLAIVE.out);
   });
@@ -242,7 +239,7 @@ describe("Bounty Beacon", () => {
     leader.x = 100;
     s.run(1);
     expect(beacon.x).toBeCloseTo(100, 0);
-    s.w.damage(leader, 10, other.id, "shot");
+    s.w.damage(leader, 10, other.id, "pistol");
     expect(other.ult.charge).toBeGreaterThan(10);
     s.run(ticks(POWERS.bountyBeacon.duration + 0.1));
     expect(leader.status.bountied ?? 0).toBe(0);
@@ -302,18 +299,16 @@ describe("Shockwave Slam", () => {
   test("knocking someone into a wall deals bonus slam damage", () => {
     const s = setup("shockwaveSlam", [[0, 0]]);
     const [enemy] = s.enemies as [Player];
-    const wall = s.w.arena.walls[0]!;
-    // A point on the wall, then inward along its normal.
-    const mx = (wall.ax + wall.bx) / 2;
-    const my = (wall.ay + wall.by) / 2;
-    enemy.x = mx + wall.nx * 90;
-    enemy.y = my + wall.ny * 90;
-    s.caster.x = mx + wall.nx * 200;
-    s.caster.y = my + wall.ny * 200;
+    // The east edge wall of the yard, then inward from it.
+    const mx = s.w.map.half;
+    enemy.x = mx - 90;
+    enemy.y = 0;
+    s.caster.x = mx - 200;
+    s.caster.y = 0;
     s.cast();
     s.run(ticks(C.airTime + C.comboWindow));
     expect(s.events.some((e) => e.t === "wallSlam" && e.target === enemy.id)).toBe(true);
-    expect(hpLost(enemy)).toBeGreaterThanOrEqual(C.damage + ARENA.wallSlamDamage * C.wallBonus + 5);
+    expect(hpLost(enemy)).toBeGreaterThanOrEqual(C.damage + TERRAIN.wallSlamDamage * C.wallBonus + 5);
   });
 
   test("Gravity Slam: blasting an enemy into a Singularity doubles its detonation", () => {
@@ -347,21 +342,21 @@ describe("Third-Party", () => {
     const [target, brawler] = s.enemies as [Player, Player];
     s.cast();
     expect(s.caster.status.thirdParty ?? 0).toBeGreaterThan(4);
-    expect(s.w.damage(target, 10, s.caster.id, "shot")).toBe(10);
-    s.w.damage(target, 5, brawler.id, "shot");
-    expect(s.w.damage(target, 10, s.caster.id, "shot")).toBe(20);
+    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(10);
+    s.w.damage(target, 5, brawler.id, "pistol");
+    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(20);
     // The brawler's hit still counts after our own hit.
-    expect(s.w.damage(target, 10, s.caster.id, "shot")).toBe(20);
+    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(20);
     // The other player stops: the bonus fades after the window.
     s.run(ticks(POWERS.thirdParty.recentWindow + 0.1));
-    expect(s.w.damage(target, 5, s.caster.id, "shot")).toBe(5);
+    expect(s.w.damage(target, 5, s.caster.id, "pistol")).toBe(5);
   });
 
   test("the caster gets a crosshair marker on qualifying targets only", () => {
     const s = setup("thirdParty", [[300, 0], [600, 0], [0, 400]]);
     const [target, brawler, bystander] = s.enemies as [Player, Player, Player];
     s.cast();
-    s.w.damage(target, 5, brawler.id, "shot");
+    s.w.damage(target, 5, brawler.id, "pistol");
     s.run(2);
     const markers = s.fx("vulture").filter((e) => e.n === 1);
     expect(markers.map((m) => m.link)).toEqual([target.id]);

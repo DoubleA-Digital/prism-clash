@@ -2,7 +2,7 @@
 // Ricochet Prism, Phantom Mark, Hex Swap, Magnetar, Void Cloak, plus the Storm Gate,
 // Lava Lock and Frozen Harvest combos.
 import { describe, expect, test } from "vitest";
-import { BTN, PF, PLAYER, POWERS, PROJ, SHOT, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
+import { BTN, PF, PLAYER, POWERS, PROJ, weaponDamage, WEAPONS, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
 
 const DT = 1 / 30;
 let seq = 0;
@@ -20,9 +20,7 @@ function frame(p: Player, m: Move = {}): InputFrame {
 }
 
 function setup(power: PowerId, enemyAt: [number, number][]) {
-  const w = new World("openVoid", 1 + enemyAt.length, 5);
-  w.arena.pillars = [];
-  w.arena.nebulas = [];
+  const w = new World("testYard", 5, { loot: false });
   const caster = w.addPlayer(1, "CASTER", 0, false);
   caster.x = 0;
   caster.y = 0;
@@ -58,7 +56,7 @@ describe("Chrono Rewind", () => {
     s.run(30);
     const start = { x: caster.x, y: caster.y };
     s.run(60, (_i, p) => (p.id === 1 ? { mx: 1 } : undefined));
-    s.w.damage(caster, 30, 2, "shot");
+    s.w.damage(caster, 30, 2, "pistol");
     s.run(20, (_i, p) => (p.id === 1 ? { mx: 1 } : undefined));
     expect(caster.x - start.x).toBeGreaterThan(600);
     expect(caster.hp).toBeCloseTo(70, 0);
@@ -74,7 +72,7 @@ describe("Chrono Rewind", () => {
 
   test("damage taken before the window is not restored", () => {
     const s = setup("chronoRewind", [[0, 600]]);
-    s.w.damage(s.caster, 30, 2, "shot");
+    s.w.damage(s.caster, 30, 2, "pistol");
     s.run(84);
     s.cast();
     expect(s.caster.hp).toBeLessThanOrEqual(70.5);
@@ -97,7 +95,7 @@ describe("Mirror Self", () => {
     s.run(1, (_i, p) => (p.id === 1 ? { buttons: BTN.shoot } : undefined));
     const cloneShots = s.w.projectiles.filter((p) => p.kind === PROJ.clone && p.owner === caster.id);
     expect(cloneShots.length).toBe(1);
-    expect(cloneShots[0]!.damage).toBeCloseTo(SHOT.damage * POWERS.mirrorSelf.damageMult);
+    expect(cloneShots[0]!.damage).toBeCloseTo(weaponDamage({ id: "pistol", rarity: 0 }) * POWERS.mirrorSelf.damageMult);
     // Recast swaps places.
     const before = { px: caster.x, py: caster.y, cx: clone.x, cy: clone.y };
     s.run(1, (_i, p) => (p.id === 1 ? { pressed: BTN.p1 } : undefined));
@@ -107,7 +105,7 @@ describe("Mirror Self", () => {
     expect(caster.slots[0]!.recast).toBe(0);
     // Enemy shots pop it after enough damage.
     for (let k = 0; k < 3; k++) {
-      s.w.spawnProjectile({ owner: 2, x: clone.x + 60, y: clone.y, vx: -SHOT.speed, vy: 0 });
+      s.w.spawnProjectile({ owner: 2, x: clone.x + 60, y: clone.y, vx: -WEAPONS.pistol.speed, vy: 0, damage: 14 });
       s.run(3);
     }
     expect(clone.dead || !s.w.effects.has(clone.id)).toBe(true);
@@ -174,18 +172,18 @@ describe("Time Bubble", () => {
     expect(e.status.timeBubble ?? 0).toBeGreaterThan(0);
     expect(e.x - ex).toBeLessThan(PLAYER.speed * 10 * DT * 0.4);
     // Caster's shot from inside gets the exit boost once.
-    const own = s.w.spawnProjectile({ owner: 1, x: 0, y: -200, vx: 0, vy: -SHOT.speed, life: 1 });
+    const own = s.w.spawnProjectile({ owner: 1, x: 0, y: -200, vx: 0, vy: -WEAPONS.pistol.speed, life: 1 });
     s.run(4);
     expect(own.flags & PF.bubbleBoost).toBeTruthy();
-    expect(Math.hypot(own.vx, own.vy)).toBeCloseTo(SHOT.speed * POWERS.timeBubble.exitSpeedMult, 0);
-    expect(own.damage).toBeCloseTo(SHOT.damage * POWERS.timeBubble.exitDamageMult);
+    expect(Math.hypot(own.vx, own.vy)).toBeCloseTo(WEAPONS.pistol.speed * POWERS.timeBubble.exitSpeedMult, 0);
+    expect(own.damage).toBeCloseTo(10 * POWERS.timeBubble.exitDamageMult);
   });
 });
 
 describe("Ricochet Prism", () => {
   test("shots gain bounces and bounce off walls with growing damage", () => {
     const s = setup("ricochetPrism", [[0, 700]]);
-    s.caster.x = s.w.arena.radius * 0.6;
+    s.caster.x = s.w.map.half * 0.6;
     s.cast();
     expect(s.caster.status.ricochet ?? 0).toBeGreaterThan(0);
     expect(s.fx("prismAura").length).toBe(1);
@@ -196,7 +194,7 @@ describe("Ricochet Prism", () => {
     s.run(20);
     expect(s.events.some((e) => e.t === "bounce")).toBe(true);
     expect(shot.bounces).toBeGreaterThanOrEqual(1);
-    expect(shot.damage).toBeGreaterThan(SHOT.damage);
+    expect(shot.damage).toBeGreaterThan(WEAPONS.pistol.damage);
   });
 });
 
@@ -220,7 +218,7 @@ describe("Phantom Mark", () => {
     s.cast();
     s.run(8);
     const e = s.enemies[0]!;
-    s.w.spawnProjectile({ owner: 1, x: e.x, y: e.y - 80, vx: 0, vy: SHOT.speed });
+    s.w.spawnProjectile({ owner: 1, x: e.x, y: e.y - 80, vx: 0, vy: WEAPONS.pistol.speed });
     s.run(3);
     const sigil = s.fx("sigil")[0]!;
     expect(sigil.n).toBe(1);
@@ -235,7 +233,7 @@ describe("Hex Swap", () => {
     const s = setup("hexSwap", [[420, 40], [0, 500]]);
     const [target, shooter] = s.enemies;
     // A shot from the second enemy about to hit the caster.
-    const pr = s.w.spawnProjectile({ owner: shooter!.id, x: 0, y: 150, vx: 0, vy: -SHOT.speed, life: 1 });
+    const pr = s.w.spawnProjectile({ owner: shooter!.id, x: 0, y: 150, vx: 0, vy: -WEAPONS.pistol.speed, life: 1 });
     s.cast();
     expect(s.caster.x).toBeCloseTo(420, 0);
     expect(target!.x).toBeCloseTo(0, 0);
@@ -266,7 +264,7 @@ describe("Magnetar", () => {
     const s = setup("magnetar", [[600, 0]]);
     s.cast();
     const hp = s.caster.hp;
-    const shots = [0, 1, 2].map((k) => s.w.spawnProjectile({ owner: 2, x: 140, y: -20 + k * 20, vx: -SHOT.speed, vy: 0, life: 1 }));
+    const shots = [0, 1, 2].map((k) => s.w.spawnProjectile({ owner: 2, x: 140, y: -20 + k * 20, vx: -WEAPONS.pistol.speed, vy: 0, life: 1 }));
     s.run(20);
     for (const pr of shots) {
       expect(pr.flags & PF.captured).toBeTruthy();
@@ -303,7 +301,7 @@ describe("Magnetar", () => {
     const s = setup("magnetar", [[600, 0], [0, 600]]);
     s.w.spawnEffect({ kind: "bubble", owner: 3, source: "timeBubble", x: 100, y: 0, r: POWERS.timeBubble.radius, life: 4 });
     s.cast();
-    s.w.spawnProjectile({ owner: 2, x: 130, y: 0, vx: -SHOT.speed, vy: 0, life: 1 });
+    s.w.spawnProjectile({ owner: 2, x: 130, y: 0, vx: -WEAPONS.pistol.speed, vy: 0, life: 1 });
     s.run(2);
     expect(s.combos().some((c) => c.name === "FROZEN HARVEST" && c.stolen)).toBe(true);
   });
@@ -326,7 +324,7 @@ describe("Void Cloak", () => {
   test("taking damage breaks the cloak and spends the crit", () => {
     const s = setup("voidCloak", [[600, 0]]);
     s.cast();
-    s.w.damage(s.caster, 5, 2, "shot");
+    s.w.damage(s.caster, 5, 2, "pistol");
     s.run(1);
     expect(s.caster.status.cloaked ?? 0).toBe(0);
     expect(s.caster.cloakCrit).toBe(false);

@@ -33,7 +33,8 @@ export const overdrive = defineUlt({
   onCast(w, p) {
     w.addStatus(p, "overdrive", C.duration);
     for (const s of p.slots) if (s) s.cd = 0;
-    p.ammo = Math.max(p.ammo, 1);
+    // A reload in progress finishes instantly: Overdrive is about firing, now.
+    if (p.reloadT > 0) p.reloadT = 0.01;
     w.spawnEffect({ kind: "overdriveAura", owner: p.id, source: "overdrive", x: p.x, y: p.y, r: p.r, life: C.duration });
     return true;
   },

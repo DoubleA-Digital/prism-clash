@@ -2,10 +2,10 @@
 // you and fires real 40%-damage shots at your aim point whenever you shoot. It absorbs a few
 // hits before shattering. Recast to swap places with it.
 
-import { POWERS, SHOT } from "../config";
+import { PLAYER, POWERS, WEAPONS } from "../config";
 import { dist2 } from "../math/vec";
+import { activeWeapon, weaponDamage } from "../sim/actions";
 import { definePower } from "../sim/hooks";
-import { collideArena, collidePillars } from "../sim/movement";
 import type { Effect, Player, PowerSlot } from "../sim/types";
 import { PF, PROJ } from "../sim/types";
 import type { World } from "../sim/world";
@@ -78,10 +78,9 @@ export const mirrorSelf = definePower({
       y = p.y - Math.sin(side) * SIDE_OFFSET;
     }
     const e = w.spawnEffect({ kind: "clone", owner: p.id, source: "mirrorSelf", x, y, x2: p.x, y2: p.y, r: C.radius, life: C.duration, angle: p.aim, v: C.hp });
-    // Settle it out of pillars/walls straight away.
+    // Settle it out of walls straight away.
     const body = { x: e.x, y: e.y, vx: 0, vy: 0 };
-    collidePillars(w.arena.pillars, body, e.r);
-    collideArena(w.arena, body, e.r, 0);
+    w.collideBody(body, e.r);
     e.x = body.x;
     e.y = body.y;
     slot.recast = C.duration;
@@ -118,8 +117,7 @@ export const mirrorSelf = definePower({
         }
         const scale = (inForeignBubble(w, e.x, e.y, e.owner) ? POWERS.timeBubble.slow : 1) / ((p.status.timeBubble ?? 0) > 0 ? POWERS.timeBubble.slow : 1);
         const body = { x: e.x - dx * scale, y: e.y - dy * scale, vx: -dx / dt, vy: -dy / dt };
-        collidePillars(w.arena.pillars, body, e.r);
-        collideArena(w.arena, body, e.r, 0);
+        w.collideBody(body, e.r);
         e.vx = (body.x - e.x) / dt;
         e.vy = (body.y - e.y) / dt;
         e.x = body.x;
@@ -138,19 +136,22 @@ export const mirrorSelf = definePower({
           const cos = Math.cos(e.angle);
           const sin = Math.sin(e.angle);
           const ricochet = (p.status.ricochet ?? 0) > 0;
+          // The clone copies whatever gun the owner holds (at reduced damage).
+          const gun = activeWeapon(p) ?? { id: "pistol" as const, rarity: 0 };
+          const def = WEAPONS[gun.id];
           const pr = w.spawnProjectile({
-            owner: p.id, kind: PROJ.clone, source: "mirrorSelf", x: e.x + cos * SHOT.spawnOffset, y: e.y + sin * SHOT.spawnOffset,
-            vx: cos * SHOT.speed, vy: sin * SHOT.speed, damage: SHOT.damage * C.damageMult,
+            owner: p.id, kind: PROJ.clone, source: "mirrorSelf", x: e.x + cos * PLAYER.muzzle, y: e.y + sin * PLAYER.muzzle,
+            vx: cos * def.speed, vy: sin * def.speed, damage: weaponDamage(gun) * C.damageMult, life: def.life, r: def.radius,
             flags: ricochet ? PF.ricochet : 0, maxBounces: ricochet ? POWERS.ricochetPrism.maxBounces : 0,
           });
-          w.emit({ t: "shoot", by: p.id, x: pr.x, y: pr.y, angle: e.angle });
+          w.emit({ t: "shoot", by: p.id, x: pr.x, y: pr.y, angle: e.angle, weapon: gun.id });
         }
       },
       onProjectileHit(w, e, pr) {
         if (e.dead) return;
         e.v -= pr.damage;
         // Sell the illusion: the shooter sees a damage number pop on the clone.
-        w.emit({ t: "hit", target: 0, by: pr.owner, amount: Math.round(pr.damage), crit: (pr.flags & PF.crit) !== 0, source: pr.source, x: e.x, y: e.y });
+        w.emit({ t: "hit", target: 0, by: pr.owner, amount: Math.round(pr.damage), crit: (pr.flags & PF.crit) !== 0, source: pr.source, x: e.x, y: e.y, armor: false });
         if (e.v <= 0) shatter(w, e);
       },
       onExpire(w, e) {

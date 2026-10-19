@@ -1,4 +1,4 @@
-// HUNTER'S EYE: for 8s you see every enemy (minimap, nebulas, Void Cloak) and your shots
+// HUNTER'S EYE: for 8s you see every enemy (minimap, bushes, walls, Void Cloak) and your shots
 // curve toward the nearest one. The `hunter` status drives the gameplay (world.hiddenFrom,
 // fireShot's homing flag, steerHoming). One hunterMark effect per enemy carries the
 // caster→target link so the caster's client can draw a reticle on each; the effect itself
@@ -15,7 +15,7 @@ const C = ULTIMATES.huntersEye;
 export const huntersEye = defineUlt({
   id: "huntersEye",
   name: "Hunter's Eye",
-  description: "For 8s see every enemy on the minimap and through Void Cloak and nebulas, and your shots home toward the nearest enemy.",
+  description: "For 8s see every enemy on the minimap and through Void Cloak, bushes and walls, and your shots home toward the nearest enemy.",
   color: "#FF3B4E",
   drawIcon(ctx, size) {
     ultFrame(ctx, size, "#4a0710");

@@ -69,6 +69,8 @@ function flyOut(w: World, e: Effect, dt: number) {
   e.y += e.vy * dt;
   if (e.age >= OUT_TIME) turnBack(e);
   if (!w.insideArena(e.x, e.y, e.r)) {
+    // Bumped into terrain: chip any crate, glass or fence it hit, then turn around.
+    w.damageArea(e.x, e.y, e.r, C.solidDamage, e.owner);
     e.x -= e.vx * dt;
     e.y -= e.vy * dt;
     turnBack(e);
@@ -117,7 +119,7 @@ function orbit(w: World, e: Effect, dt: number) {
   }
 }
 
-/** Blade contact: enemies, enemy decoys and pillars along the glaive's path. */
+/** Blade contact: enemies, enemy decoys and destructibles along the glaive's path. */
 function cut(w: World, e: Effect) {
   for (const p of w.players.values()) {
     if (!p.alive || p.id === e.owner || (p.status.airborne ?? 0) > 0) continue;
@@ -132,11 +134,6 @@ function cut(w: World, e: Effect) {
   for (const d of w.effects.values()) {
     if (d.kind !== "decoy" || d.dead || d.owner === e.owner) continue;
     if (dist2(e.x, e.y, d.x, d.y) <= (e.r + d.r) ** 2) popDecoy(w, d);
-  }
-  for (const pl of w.arena.pillars) {
-    if (pl.dead || dist2(e.x, e.y, pl.x, pl.y) > (e.r + pl.r) ** 2) continue;
-    if (hitReady(e, -pl.id, w.time, C.hitCooldown)) w.damagePillar(pl.id, C.pillarDamage, e.x, e.y);
-    turnBack(e);
   }
 }
 

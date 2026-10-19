@@ -1,4 +1,4 @@
-// RICOCHET PRISM: for 6s your shots bounce off walls and pillars up to 4 times, growing
+// RICOCHET PRISM: for 6s your shots bounce off walls and cover up to 4 times, growing
 // stronger and shifting color each bounce (rainbow on the last). The bounce itself lives in
 // world.stepProjectile; this power grants the status and a prism aura everyone can see.
 
@@ -14,7 +14,7 @@ const COLOR = "#FF7BF2";
 export const ricochetPrism = definePower({
   id: "ricochetPrism",
   name: "Ricochet Prism",
-  description: "For 6s your shots bounce off walls and pillars up to 4 times, gaining damage and color each bounce. Rainbow on the last.",
+  description: "For 6s your shots bounce off walls and cover up to 4 times, gaining damage and color each bounce. Rainbow on the last.",
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size) {
