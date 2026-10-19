@@ -1,33 +1,39 @@
 // Client prediction must agree with the authoritative server. Runs the real client NetView
-// (prediction + reconciliation) against a real World + snapshot pipeline with no latency.
+// (prediction + reconciliation, movement and hands) against a real World + snapshot pipeline
+// with no latency, on the real Neon City map with walls in the way.
 import { describe, expect, test } from "vitest";
-import { BTN, inputFromWire, inputToWire, World, type InputFrame } from "@prism/shared";
+import { BTN, inputFromWire, inputToWire, newWeapon, World, type InputFrame } from "@prism/shared";
 import { NetView } from "../../client/src/net/netview";
 import { newMember } from "../src/rooms/member";
 import { buildSnapshot } from "../src/rooms/snapshots";
 
 describe("prediction vs server", () => {
-  test("no corrections while moving and dashing", () => {
-    const w = new World("shatteredGrid", 2, 7);
-    w.addPlayer(1, "A", 0, false);
+  test("no corrections while moving, dashing, shooting, reloading and swapping among walls", () => {
+    const w = new World("neonCity", 7, { loot: false });
+    const me = w.addPlayer(1, "A", 0, false);
     w.addPlayer(2, "B", 1, false);
     w.placeSpawns();
+    me.inv.weapons[1] = newWeapon("smg", 1);
     const m = newMember(1, "A", "t", false, "x", 0);
-    const view = new NetView("shatteredGrid", 2, 7, 1);
+    const view = new NetView("neonCity", 7, 1);
     let now = 1000;
     // First snapshot so the client knows where it is.
     view.receive(buildSnapshot(w, m, [], 0), now);
     let pendingToServer: InputFrame[] = [];
     let worst = 0;
+    let predictedShots = 0;
     for (let f = 0; f < 60 * 20; f++) {
       const t = f / 60;
       const mx = Math.cos(t * 1.3);
       const my = Math.sin(t * 0.9);
-      const pressed = f % 50 === 7 ? BTN.dash : 0;
+      const dash = f % 50 === 7 ? BTN.dash : 0;
+      const shoot = f % 90 < 45 ? BTN.shoot : 0;
+      const tap = f % 240 === 100 ? BTN.swap : f % 240 === 200 ? BTN.reload : 0;
       const dt = 1 / 60 + ((f * 7919) % 5) / 1000; // uneven frame times
-      const frame = view.predict(mx, my, t, pressed ? BTN.dash : 0, pressed, dt)!;
+      const out = view.predict(mx, my, t, dash | shoot, dash | tap, dt);
+      predictedShots += out.shots;
       // Over the wire and back (quantized exactly like the real protocol).
-      pendingToServer.push(inputFromWire(inputToWire(frame))!);
+      pendingToServer.push(inputFromWire(inputToWire(out.frame))!);
       now += dt * 1000;
       if (f % 2 === 1) {
         w.step(new Map([[1, pendingToServer], [2, []]]));
@@ -40,5 +46,8 @@ describe("prediction vs server", () => {
     }
     expect(worst).toBeLessThan(2);
     expect(view.debug.corrections).toBe(0);
+    expect(predictedShots).toBeGreaterThan(20);
+    // The server fired exactly the shots the client predicted.
+    expect(w.stat(1).shots).toBe(predictedShots);
   });
 });

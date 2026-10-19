@@ -1,7 +1,7 @@
 // Room lifecycle, rejoin, host migration, validation and fuzzing with garbage messages.
 import { afterEach, describe, expect, test } from "vitest";
 import type { WebSocket } from "ws";
-import { C2S, Rng, type ClientMsg } from "@prism/shared";
+import { C2S, decode, MATCH, NET, Rng, S2C, type ClientMsg, type ServerMsg } from "@prism/shared";
 import { Room } from "../src/rooms/room";
 import { rateCheck, sanitizeName } from "../src/validate";
 
@@ -12,7 +12,7 @@ const fakeWs = () => {
 
 const rooms: Room[] = [];
 const mkRoom = () => {
-  const r = new Room("ABCDE", 123, false);
+  const r = new Room("ABCDE", 123, false, { loop: false });
   rooms.push(r);
   return r;
 };
@@ -44,8 +44,40 @@ describe("room", () => {
     const r = mkRoom();
     const a = r.addHuman(1, "Ann", "t1", fakeWs().ws, "ip")!;
     r.handle(a, { type: C2S.start });
-    expect(r.members.size).toBe(5);
+    expect(r.members.size).toBe(MATCH.fighters);
     expect(r.phase).toBe("ultSelect");
+    // Bots get colors beyond the five human ones, all distinct.
+    expect(new Set([...r.members.values()].map((m) => m.color)).size).toBe(MATCH.fighters);
+  });
+
+  test("a whole bot-filled match runs from start to results, with interest-managed snapshots", () => {
+    const r = mkRoom();
+    const sock = fakeWs();
+    const a = r.addHuman(1, "Ann", "t1", sock.ws, "ip")!;
+    r.handle(a, { type: C2S.start });
+    let ticks = 0;
+    const limit = (MATCH.ultSelectSeconds + MATCH.draftSeconds + MATCH.countdownSeconds + MATCH.maxSeconds + 10) * NET.tickRate;
+    let sawRound = false;
+    while (r.phase !== "matchEnd" && ticks < limit) {
+      if (r.phase === "ultSelect") r.handle(a, { type: C2S.pickUlt, index: 0 });
+      if (r.phase === "draft") r.handle(a, { type: C2S.pickPower, index: 1 });
+      // The human idles near their spawn; keep acking snapshots so deltas stay small.
+      if (r.phase === "round") {
+        sawRound = true;
+        r.handle(a, { type: C2S.input, frames: [], ackTick: r.world?.tick ?? -1 });
+      }
+      r.step();
+      ticks++;
+    }
+    expect(sawRound).toBe(true);
+    expect(r.phase).toBe("matchEnd");
+    const msgs = sock.sent.map((d) => decode<ServerMsg>(d));
+    const end = msgs.find((m) => m.type === S2C.matchEnd);
+    expect(end && end.type === S2C.matchEnd && end.stats.length).toBe(MATCH.fighters);
+    if (end && end.type === S2C.matchEnd) expect(end.stats.find((s) => s.place === 1)?.playerId).toBe(end.winnerId);
+    // Snapshots never carried all 12 fighters at once to a viewer that can't see them.
+    const snaps = msgs.filter((m) => m.type === S2C.snapshot);
+    expect(snaps.length).toBeGreaterThan(100);
   });
 
   test("mid-match disconnect keeps the seat for rejoin", () => {

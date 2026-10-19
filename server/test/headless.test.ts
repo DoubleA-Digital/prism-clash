@@ -1,48 +1,57 @@
-// Bots play whole rounds on the real World with every power available: no exceptions,
-// nobody stuck, and every round ends with one survivor.
+// Full bot matches with no network: 12 bots with powers on each real map play one long
+// battle royale to the end without exceptions, they move, loot, fight, and the zone closes.
 import { describe, expect, test } from "vitest";
-import { allPowers, allUlts, LAYOUTS, World, type InputFrame } from "@prism/shared";
+import { allPowers, allUlts, MATCH, PLAY_MAPS, World, type InputFrame, type MapId } from "@prism/shared";
 import { createBrain } from "../src/bots/brain";
 
-function playRound(seed: number, layout: (typeof LAYOUTS)[number], players = 5) {
-  const w = new World(layout, players, seed);
+function playMatch(seed: number, map: MapId) {
+  const w = new World(map, seed);
   const powers = allPowers();
   const ults = allUlts();
   const brains = new Map<number, ReturnType<typeof createBrain>>();
-  for (let i = 1; i <= players; i++) {
+  for (let i = 1; i <= MATCH.fighters; i++) {
     const p = w.addPlayer(i, `BOT${i}`, i - 1, true);
     const a = powers[(seed + i) % Math.max(1, powers.length)];
     const b = powers[(seed + i * 7 + 3) % Math.max(1, powers.length)];
-    p.slots = [a ? { id: a.id, cd: 0, recast: 0 } : null, b ? { id: b.id, cd: 0, recast: 0 } : null, null];
+    p.slots = [a ? { id: a.id, cd: 0, recast: 0 } : null, b ? { id: b.id, cd: 0, recast: 0 } : null];
     const u = ults[(seed + i) % Math.max(1, ults.length)];
-    p.ult = u ? { id: u.id, charge: 60 } : null;
+    p.ult = u ? { id: u.id, charge: 40 } : null;
     brains.set(i, createBrain(i % 3 === 0 ? "hard" : i % 2 ? "normal" : "easy", seed * 31 + i));
   }
   w.placeSpawns();
-  const moved = new Map<number, number>();
+  const start = new Map([...w.players.values()].map((p) => [p.id, { x: p.x, y: p.y }] as const));
   let ticks = 0;
-  while (w.alivePlayers().length > 1 && ticks < 30 * 60 * 4) {
+  let maxTravel = 0;
+  const limit = 30 * MATCH.maxSeconds;
+  while (w.alivePlayers().length > 1 && ticks < limit) {
     const inputs = new Map<number, InputFrame[]>();
-    for (const p of w.alivePlayers()) {
-      const before = { x: p.x, y: p.y };
-      inputs.set(p.id, [brains.get(p.id)!.think(w, p)]);
-      moved.set(p.id, (moved.get(p.id) ?? 0) + (Math.hypot(p.x - before.x, p.y - before.y) > 0 ? 0 : 0));
-    }
+    for (const p of w.alivePlayers()) inputs.set(p.id, [brains.get(p.id)!.think(w, p)]);
     w.step(inputs);
     ticks++;
+    if (ticks % 300 === 0) {
+      for (const p of w.alivePlayers()) {
+        const s = start.get(p.id)!;
+        maxTravel = Math.max(maxTravel, Math.hypot(p.x - s.x, p.y - s.y));
+      }
+    }
   }
-  return { w, ticks };
+  return { w, ticks, maxTravel };
 }
 
-describe("headless bot rounds", () => {
-  for (const layout of LAYOUTS) {
-    test(`5 bots finish a round on ${layout}`, () => {
-      for (let seed = 1; seed <= 3; seed++) {
-        const { w, ticks } = playRound(seed, layout);
-        expect(w.alivePlayers().length).toBeLessThanOrEqual(1);
-        expect(ticks).toBeLessThan(30 * 60 * 4);
-        expect(w.deaths.length).toBeGreaterThanOrEqual(4);
-      }
+describe("headless bot matches", () => {
+  for (const map of PLAY_MAPS) {
+    test(`12 bots finish a full match on ${map}`, () => {
+      const { w, ticks, maxTravel } = playMatch(3, map);
+      expect(w.alivePlayers().length).toBeLessThanOrEqual(1);
+      expect(w.deaths.length).toBeGreaterThanOrEqual(MATCH.fighters - 1);
+      expect(ticks).toBeLessThan(30 * MATCH.maxSeconds);
+      expect(maxTravel).toBeGreaterThan(600);
+      const shots = [...w.stats.values()].reduce((a, s) => a + s.shots, 0);
+      const looted = [...w.stats.values()].reduce((a, s) => a + s.looted, 0);
+      const kills = [...w.stats.values()].reduce((a, s) => a + s.kills, 0);
+      expect(shots).toBeGreaterThan(100);
+      expect(looted).toBeGreaterThan(10);
+      expect(kills).toBeGreaterThan(2);
     });
   }
 });

@@ -1,18 +1,20 @@
-// The client's view of the round:
-//  - a buffer of decoded snapshots (also used for the slow-mo replay)
+// The client's view of the match:
+//  - a buffer of decoded snapshots
 //  - interpolation of everything else ~100 ms in the past
-//  - prediction + reconciliation of the local player (same shared movement code)
+//  - prediction + reconciliation of the local player: the same shared movePlayer and
+//    actFrame code the server runs (movement, dash, trigger, reload, heal, swap)
 //  - predicted own shots that appear instantly and hand over to the server's real ones
+//  - the static map built from (mapId, seed), with destructible state applied from snapshots
 
 import {
-  applyDelta, buildArena, BTN, decodeEffect, decodeGlobal, decodePickup, decodePillar, decodePlayer, decodeProjectile, decodeSelf,
-  EK, hasStatusBit, lerp, lerpAngle, movePlayer, NET, PLAYER, POWERS, SHOT, STATUS_IDS,
-  type ArenaDef, type EntityMap, type GameEvent, type InputFrame, type LayoutId, type NetEffect, type NetGlobal, type NetPickup,
-  type NetPillar, type NetPlayer, type NetProjectile, type NetSelf, type Pillar, type Player, type SnapshotWire, type Statuses,
+  actFrame, applyDelta, buildMap, decodeEffect, decodeGlobal, decodeLoot, decodePlayer, decodeProjectile, decodeSelf, EK, hasStatusBit,
+  GUN, lerp, lerpAngle, movePlayer, muzzle, NET, newInventory, PLAYER, POWERS, SOLID_ID_BASE, spreadNoise, STATUS_IDS, sweepSolids, volleyAngles, WEAPONS,
+  type EntityMap, type GameEvent, type InputFrame, type MapDef, type MapId, type NetEffect, type NetGlobal, type NetLoot, type NetPlayer,
+  type NetProjectile, type NetSelf, type Player, type SnapshotWire, type Statuses, type WeaponId,
 } from "@prism/shared";
 
 const TICK_MS = 1000 / NET.tickRate;
-const KEEP_TICKS = NET.tickRate * 6;
+const KEEP_TICKS = NET.tickRate * 3;
 
 export interface SnapState {
   tick: number;
@@ -24,10 +26,12 @@ export interface SnapState {
 
 export interface PredictedShot {
   shotId: number;
+  weapon: WeaponId;
   x: number;
   y: number;
   vx: number;
   vy: number;
+  r: number;
   life: number;
   born: number;
   alpha: number;
@@ -40,8 +44,7 @@ export interface View {
   players: NetPlayer[];
   projectiles: NetProjectile[];
   effects: NetEffect[];
-  pillars: Map<number, NetPillar>;
-  pickups: NetPickup[];
+  loot: NetLoot[];
   g: NetGlobal;
 }
 
@@ -66,14 +69,24 @@ function statusFromBits(bits: number): Statuses {
   return st;
 }
 
+export interface PredictOut {
+  frame: InputFrame;
+  /** Volleys fired this frame (for local muzzle flash and reticle kick). */
+  shots: number;
+  swing: boolean;
+  lance: boolean;
+}
+
 export class NetView {
-  arena: ArenaDef;
+  map: MapDef;
   states: SnapState[] = [];
   latest: SnapState | null = null;
   myId: number;
   /** Predicted local player (null when dead/spectating). */
   me: Player | null = null;
   self: NetSelf | null = null;
+  /** Ids of players still alive (from the server's alive list). */
+  alive: number[] = [];
   private pending: InputFrame[] = [];
   private seq = 0;
   private shotSeq = 1;
@@ -88,14 +101,10 @@ export class NetView {
   debug: NetDebug = { corrections: 0, correctionsPerMin: 0, maxCorrection: 0, lastCorrection: 0, interpDelayTicks: 3, estServerTick: 0, renderTick: 0, late: 0, recent: [] };
   private corrWindow: number[] = [];
   private pendingEvents: { tick: number; e: GameEvent }[] = [];
-  /** Mirror of the server's ammo/fire timing so predicted shots match real ones. */
-  private ammo: number = SHOT.ammoMax;
-  private ammoT = 0;
-  private fireCd = 0;
   onEvent: (e: GameEvent, immediate: boolean) => void = () => {};
 
-  constructor(layout: LayoutId, playerCount: number, seed: number, myId: number) {
-    this.arena = buildArena(layout, playerCount, seed, 100000);
+  constructor(mapId: MapId, seed: number, myId: number) {
+    this.map = buildMap(mapId, seed);
     this.myId = myId;
   }
 
@@ -123,6 +132,8 @@ export class NetView {
     while (this.states.length && (this.states[0]?.tick ?? 0) < s.t - KEEP_TICKS) this.states.shift();
     const prevLatest = this.latest;
     this.latest = state;
+    if (s.al) this.alive = s.al;
+    this.applySolids(ents);
 
     // Server tick clock: the snapshot's tick "is" now (minus jitter). Track the offset.
     const sample = s.t - now / TICK_MS;
@@ -145,6 +156,17 @@ export class NetView {
     return true;
   }
 
+  /** Destructible hp / broken state from the server, applied to our copy of the map. */
+  private applySolids(ents: EntityMap) {
+    for (const [id, a] of ents) {
+      if (a[0] !== EK.solid) continue;
+      const s = this.map.solids[id - SOLID_ID_BASE];
+      if (!s) continue;
+      s.hp = a[1] ?? s.hp;
+      s.dead = a[2] === 1;
+    }
+  }
+
   estServerTick(now: number): number {
     return now / TICK_MS + this.tickOffset;
   }
@@ -154,14 +176,6 @@ export class NetView {
   }
 
   // ---- prediction ------------------------------------------------------------------------
-
-  private pillarsLive(): Pillar[] {
-    const st = this.latest;
-    return this.arena.pillars.map((p) => {
-      const a = st?.ents.get(p.id);
-      return a ? { ...p, hp: a[1] ?? p.hp, dead: a[2] === 1 } : p;
-    });
-  }
 
   private reconcile(self: NetSelf, first: boolean) {
     this.self = self;
@@ -186,18 +200,27 @@ export class NetView {
     me.dashY = self.dashY;
     me.status = statusFromBits(self.status);
     me.hp = self.hp;
+    me.armor = self.armor;
     me.alive = true;
+    me.fireCd = self.fireCd;
+    me.reloadT = self.reloadT;
+    me.bloom = self.bloom;
+    me.charge = self.charge;
+    me.swingT = self.swingT;
+    me.throwCd = self.throwCd;
+    me.healKind = self.healKind;
+    me.healT = self.healT;
+    me.inv = {
+      weapons: self.weapons.map((w) => (w ? { ...w } : null)), active: self.active, throwable: self.throwable, throws: self.throws,
+      bandages: self.bandages, medkits: self.medkits,
+    };
     this.pending = this.pending.filter((f) => f.seq > self.ackSeq);
-    const pillars = this.pillarsLive();
     const ts = hasStatusBit(self.status, "timeBubble") ? POWERS.timeBubble.slow : 1;
-    for (const f of this.pending) movePlayer(me, f, this.arena, pillars, f.dt, ts);
+    for (const f of this.pending) {
+      movePlayer(me, f, this.map, f.dt, ts);
+      actFrame(me, f, f.dt * ts);
+    }
     this.me = me;
-
-    // Ammo mirror: server value minus shots we fired that it hasn't processed yet.
-    const unackedShots = this.pending.filter((f) => f.shotId > 0).length;
-    this.ammo = Math.max(0, self.ammo - unackedShots);
-    this.ammoT = self.ammoT;
-    this.fireCd = Math.max(this.fireCd, self.fireCd);
 
     // Smooth the correction instead of snapping (unless it's a teleport or huge).
     const ex = oldX - me.x;
@@ -224,57 +247,54 @@ export class NetView {
 
   private blankMe(): Player {
     return {
-      id: this.myId, kind: "player", name: "", color: 0, bot: false, x: 0, y: 0, vx: 0, vy: 0, px: 0, py: 0, r: PLAYER.radius, aim: 0, hp: 100, alive: true,
-      connected: true, dashT: 0, dashCd: 0, dashX: 0, dashY: 0, fireCd: 0, ammo: SHOT.ammoMax, ammoT: 0, sinceDamage: 0, sinceShot: 0, slots: [], ult: null,
-      status: {}, lastHitBy: 0, lastHitSource: "shot", lastHitTick: 0, warp: 0, ackSeq: 0, absorbed: 0, cloakCrit: false, damagedAt: 0, damagedBy: 0,
+      id: this.myId, kind: "player", name: "", color: 0, bot: false, x: 0, y: 0, vx: 0, vy: 0, px: 0, py: 0, r: PLAYER.radius, aim: 0, hp: 100, armor: 0, alive: true,
+      connected: true, dashT: 0, dashCd: 0, dashX: 0, dashY: 0, inv: newInventory(), fireCd: 0, reloadT: 0, bloom: 0, charge: 0, swingT: 0, throwCd: 0,
+      healKind: null, healT: 0, sinceDamage: 0, sinceShot: 0, slots: [], ult: null, status: {}, lastHitBy: 0, lastHitSource: "pistol", lastHitTick: 0,
+      warp: 0, ackSeq: 0, absorbed: 0, cloakCrit: false, damagedAt: 0, damagedBy: 0,
     };
   }
 
-  /** Runs one local frame: predicts movement and maybe a shot, returns the frame to send. */
-  predict(mx: number, my: number, aim: number, held: number, pressed: number, dt: number): InputFrame | null {
+  /** Runs one local frame: predicts movement and hands (and any shots), returns the frame to send. */
+  predict(mx: number, my: number, aim: number, held: number, pressed: number, rawDt: number): PredictOut {
+    // The wire carries whole milliseconds; predict with exactly what the server will use.
+    const dt = Math.round(rawDt * 1000) / 1000;
+    const frame: InputFrame = { seq: ++this.seq, mx, my, aim, buttons: held, pressed, dt, shotId: 0 };
+    const out: PredictOut = { frame, shots: 0, swing: false, lance: false };
     const me = this.me;
-    const self = this.self;
-    let shotId = 0;
-    if (me && self) {
-      const od = hasStatusBit(self.status, "overdrive");
-      const air = hasStatusBit(self.status, "airborne");
-      this.fireCd = Math.max(0, this.fireCd - dt);
-      if (this.ammo < SHOT.ammoMax) {
-        this.ammoT += dt * (od ? 2.2 : 1);
-        if (this.ammoT >= SHOT.ammoReload) {
-          this.ammoT = 0;
-          this.ammo++;
-        }
-      }
-      if ((held & BTN.shoot) && this.fireCd <= 0 && this.ammo > 0 && me.dashT <= 0 && !air) {
-        shotId = this.shotSeq++;
-        this.fireCd = SHOT.fireCooldown / (od ? 2 : 1);
-        if (!od) this.ammo--;
-        const c = Math.cos(aim);
-        const s = Math.sin(aim);
-        this.shots.push({
-          shotId, x: me.x + c * SHOT.spawnOffset, y: me.y + s * SHOT.spawnOffset, vx: c * SHOT.speed + me.vx * 0.15, vy: s * SHOT.speed + me.vy * 0.15,
-          life: SHOT.life, born: performance.now(), alpha: 1, matched: false, dead: false,
-        });
-      }
-    }
-    const frame: InputFrame = { seq: ++this.seq, mx, my, aim, buttons: held, pressed, dt, shotId };
     if (me) {
-      const ts = self && hasStatusBit(self.status, "timeBubble") ? POWERS.timeBubble.slow : 1;
-      movePlayer(me, frame, this.arena, this.pillarsLive(), dt, ts);
+      const ts = this.self && hasStatusBit(this.self.status, "timeBubble") ? POWERS.timeBubble.slow : 1;
+      movePlayer(me, frame, this.map, dt, ts);
+      const gun = me.inv.weapons[me.inv.active];
+      const act = actFrame(me, frame, dt * ts);
+      if (act.shots > 0 && gun) {
+        frame.shotId = this.shotSeq++;
+        this.spawnPredicted(me, gun.id, frame.shotId, act.bloom, aim, act.shots);
+      }
+      out.shots = act.shots;
+      out.swing = act.swing;
+      out.lance = act.lance >= 0;
       this.pending.push(frame);
       if (this.pending.length > 240) this.pending.shift();
     }
     // Decay the visual correction.
-    const k = Math.exp(-dt / (NET.correctionSmoothMs / 1000 / 3));
+    const k = Math.exp(-rawDt / (NET.correctionSmoothMs / 1000 / 3));
     this.offX *= k;
     this.offY *= k;
-    return frame;
+    return out;
   }
 
-  /** Visible ammo for the HUD (predicted). */
-  get hudAmmo() {
-    return { ammo: this.ammo, reload: this.ammoT / SHOT.ammoReload };
+  private spawnPredicted(me: Player, weapon: WeaponId, shotId: number, bloom: number, aim: number, volleys: number) {
+    const def = WEAPONS[weapon];
+    if (def.kind === "lance" || def.kind === "blade") return;
+    const start = muzzle(this, me.x, me.y, aim);
+    for (let v = 0; v < volleys; v++) {
+      for (const a of volleyAngles(weapon, aim, bloom, (k) => spreadNoise(shotId, k))) {
+        this.shots.push({
+          shotId, weapon, x: start.x, y: start.y, vx: Math.cos(a) * def.speed + me.vx * GUN.inheritVelocity, vy: Math.sin(a) * def.speed + me.vy * GUN.inheritVelocity, r: def.radius,
+          life: def.life, born: performance.now(), alpha: 1, matched: false, dead: false,
+        });
+      }
+    }
   }
 
   // ---- predicted shots -----------------------------------------------------------------
@@ -284,33 +304,25 @@ export class NetView {
       if (arr[0] !== EK.projectile) continue;
       const shotId = arr[9] ?? 0;
       if (!shotId || arr[5] !== this.myId) continue;
-      const s = this.shots.find((x) => x.shotId === shotId);
-      if (s) s.matched = true;
+      for (const s of this.shots) if (s.shotId === shotId) s.matched = true;
     }
   }
 
   stepShots(dt: number, now: number) {
     for (const s of this.shots) {
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
+      const nx = s.x + s.vx * dt;
+      const ny = s.y + s.vy * dt;
+      // Walls end a predicted shot (the server shows the real impact).
+      const hit = sweepSolids(this.map, s.x, s.y, nx, ny, s.r);
+      if (hit && hit.t < 1) s.dead = true;
+      s.x = nx;
+      s.y = ny;
       s.life -= dt;
       if (s.matched) s.alpha -= dt / 0.08;
       else if (now - s.born > 600) s.alpha -= dt / 0.1;
-      // Walls and pillars end a predicted shot (the server shows the real impact).
-      if (s.life <= 0 || !this.insideArena(s.x, s.y)) s.dead = true;
-      for (const p of this.arena.pillars) {
-        if ((s.x - p.x) ** 2 + (s.y - p.y) ** 2 < (p.r + SHOT.radius) ** 2) {
-          const live = this.latest?.ents.get(p.id);
-          if (!live || live[2] !== 1) s.dead = true;
-        }
-      }
+      if (s.life <= 0) s.dead = true;
     }
     this.shots = this.shots.filter((s) => !s.dead && s.alpha > 0);
-  }
-
-  private insideArena(x: number, y: number) {
-    for (const w of this.arena.walls) if ((x - w.ax) * w.nx + (y - w.ay) * w.ny < SHOT.radius) return false;
-    return true;
   }
 
   // ---- interpolation -----------------------------------------------------------------------
@@ -334,10 +346,13 @@ export class NetView {
       case "kill":
         return e.victim === id || e.killer === id;
       case "combo":
-        return e.by === id;
-      case "pickup":
+      case "loot":
       case "dash":
       case "cast":
+      case "reload":
+      case "heal":
+      case "shard":
+      case "throw":
         return e.by === id;
       default:
         return false;
@@ -374,8 +389,7 @@ export class NetView {
     const players: NetPlayer[] = [];
     const projectiles: NetProjectile[] = [];
     const effects: NetEffect[] = [];
-    const pillars = new Map<number, NetPillar>();
-    const pickups: NetPickup[] = [];
+    const loot: NetLoot[] = [];
     const ownExtra = extrapolateOwnTo !== undefined ? Math.max(0, (extrapolateOwnTo - b.tick) / NET.tickRate) : 0;
 
     for (const [id, bv] of b.ents) {
@@ -419,11 +433,8 @@ export class NetView {
           });
           break;
         }
-        case EK.pillar:
-          pillars.set(id, decodePillar(id, bv));
-          break;
-        case EK.pickup:
-          pickups.push(decodePickup(id, bv));
+        case EK.loot:
+          loot.push(decodeLoot(id, bv));
           break;
         default:
           break;
@@ -432,7 +443,7 @@ export class NetView {
     const ga = a.g;
     const gb = b.g;
     const g: NetGlobal = { ...gb, zx: lerp(ga.zx, gb.zx, f), zy: lerp(ga.zy, gb.zy, f), zr: lerp(ga.zr, gb.zr, f) };
-    return { tick: t, players, projectiles, effects, pillars, pickups, g };
+    return { tick: t, players, projectiles, effects, loot, g };
   }
 
   updateDebug(now: number) {

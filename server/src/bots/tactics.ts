@@ -5,7 +5,7 @@
 import { POWERS, ULTIMATES, type Player, type PowerId, type UltId, type World } from "@prism/shared";
 
 export interface CastPlan {
-  /** 0, 1, 2 = power slots, 3 = ultimate. */
+  /** 0, 1 = power slots, 3 = ultimate. */
   slot: number;
   /** Exact aim for the cast tick (the brain adds difficulty-based error). */
   aim: number | null;
@@ -153,7 +153,7 @@ export function chooseCast(c: TacticsContext, slotAges: number[]): CastPlan | nu
     if (aim !== false) return { slot: 3, aim };
   }
   if (c.rand() > c.eagerness) return null;
-  const order = [0, 1, 2].sort(() => c.rand() - 0.5);
+  const order = [0, 1].sort(() => c.rand() - 0.5);
   for (const i of order) {
     const s = me.slots[i];
     if (!s) continue;

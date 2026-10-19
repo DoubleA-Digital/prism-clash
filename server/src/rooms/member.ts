@@ -17,21 +17,16 @@ export interface Member {
   ip: string;
 
   // Match progress
-  points: number;
-  roundWins: number;
-  totalKills: number;
-  totalDamage: number;
-  totalShots: number;
-  totalHits: number;
-  totalCombos: number;
-  powersUsed: Set<string>;
-  placements: number[];
   loadout: DraftLoadout;
   ult: UltId | null;
   ultOptions: UltId[];
   draftOptions: PowerId[];
   draftPick: number | null;
   ultPick: number | null;
+  /** In-match Prism Shard draft: the open offer, when it closes, and shards still waiting. */
+  shardOptions: PowerId[];
+  shardEndsAt: number;
+  shardPending: number;
 
   // Netcode
   inputs: InputFrame[];
@@ -43,29 +38,27 @@ export interface Member {
   rttMs: number;
   spectate: number;
   hauntReadyAt: number;
+  /** Last alive-list sent (and when), so it only rides on snapshots when it changes. */
+  aliveSent: string;
+  aliveSentAt: number;
   rate: { second: number; inputs: number; other: number; strikes: number };
 }
 
 export function newMember(id: number, name: string, token: string, bot: boolean, ip: string, now: number): Member {
   return {
     id, name, color: 0, ready: bot, bot, token, ws: null, connected: true, disconnectedAt: 0, joinedAt: now, ip,
-    points: 0, roundWins: 0, totalKills: 0, totalDamage: 0, totalShots: 0, totalHits: 0, totalCombos: 0, powersUsed: new Set(), placements: [],
     loadout: { slots: [null, null], older: 0 }, ult: null, ultOptions: [], draftOptions: [], draftPick: null, ultPick: null,
+    shardOptions: [], shardEndsAt: 0, shardPending: 0,
     inputs: [], dtBudget: 0, budgetAt: 0, ackTick: -1, baselines: new Map(), rttMs: 80, spectate: 0, hauntReadyAt: 0,
+    aliveSent: "", aliveSentAt: -9999,
     rate: { second: 0, inputs: 0, other: 0, strikes: 0 },
   };
 }
 
 export function resetMatchProgress(m: Member) {
-  m.points = 0;
-  m.roundWins = 0;
-  m.totalKills = 0;
-  m.totalDamage = 0;
-  m.totalShots = 0;
-  m.totalHits = 0;
-  m.totalCombos = 0;
-  m.powersUsed = new Set();
-  m.placements = [];
   m.loadout = { slots: [null, null], older: 0 };
   m.ult = null;
+  m.shardOptions = [];
+  m.shardPending = 0;
+  m.shardEndsAt = 0;
 }
