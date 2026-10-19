@@ -1,0 +1,7 @@
+{
+  "name": "@prism/shared",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "msgpackr": "2.1.1" }
+}
