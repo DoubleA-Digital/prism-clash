@@ -539,3 +539,84 @@ PROGRESS.md is updated each time.
 - **Netcode feel.** I'll tune the interpolation delay, correction smoothing and input merging against the simulator at 150 ms latency before building anything on top (end of Phase 1).
 - **Canvas performance.** Everything is cached sprites and pooled particles from day one, and the F1 readout keeps it honest.
 - **Determinism between client and server.** Prediction only covers your own movement, dash and shots, the code that's easy to keep identical. Everything else is authoritative and interpolated.
+
+---
+
+## 12. Version 2: combat overhaul (looter-shooter)
+
+After playing v1 you said the UI is right but the combat gets boring: floating cores with one weak gun on an empty arena. v2 keeps the look (menus, draft cards, HUD style, neon palette, audio engine, netcode) and rebuilds what you actually do in a match. Your answers on 2026-10-19: **keep powers and ultimates**, **floor loot + crates**, **chibi heroes**, **one long round**.
+
+Work happens on branch `v2-combat` so v1 on `master` stays playable.
+
+### 12.1 Mini characters
+- Top-down chibi heroes: big head with hair or headgear, small body, two hands gripping whatever they hold, pointed at your aim. Walk bob, footstep dust, recoil kick, reload animation, hit flash, a death pop.
+- **8 heroes** to choose from in the lobby (look only, same stats, so the game stays fair). Each wears your player color as an outline glow so you can still tell people apart at a glance.
+- Hitbox stays a circle (radius 22) so netcode and hit detection stay exact.
+
+### 12.2 Weapons and gear (found, not given)
+Everyone drops in with a **Pistol**. Everything else is on the floor, in crates, or in supply drops.
+
+| Weapon | Feel |
+|---|---|
+| Pistol | Accurate, unlimited reserve ammo, the fallback |
+| SMG | Very fast fire rate, spread grows while firing, short range |
+| Assault Rifle | All-rounder, 30-round mag |
+| Shotgun | 8 pellets, brutal up close, useless far away |
+| Sniper | Huge damage, slow bolt, pierces 1 target, right-click scope zooms the camera |
+| Rocket Launcher | Splash damage, knockback, breaks crates and cover walls |
+| Prism Lance | Neon laser: hold to charge, beam bounces once off walls |
+| Energy Blade | Melee: dash slash with a wide arc, deflects bullets during the swing |
+
+- **Rarity** (gray, blue, purple, gold) adds damage and magazine size, shown as the glow color of the item on the floor.
+- **Inventory**: 2 weapon slots (1/2 or scroll to swap), 1 throwable slot, heals, armor.
+- **Throwables**: Frag grenade, Smoke grenade (blocks vision), Shock mine.
+- **Healing and armor**: Bandage (small, fast), Medkit (big, slow), Shield Cell (armor that absorbs damage first, up to 50).
+- Magazines and reloading. Ammo comes from ammo boxes and crates. Kills drop the victim's whole loadout as a loot pile.
+- **Supply drops** fall from the sky a few times per match (announced on the minimap) with purple and gold gear. Whoever gets there first wins the fight for it.
+
+### 12.3 Maps with real terrain
+- One big map instead of the small polygon: about 6000 x 6000 units for up to 12 fighters (humans plus bots filling empty seats).
+- **Two maps**, hand-built from reusable prefabs with seeded variation each match:
+  - **Neon City**: buildings with doorways and rooms (the roof fades when you walk in), alleys, a plaza, fences, parked hover cars as cover.
+  - **Crystal Wilds**: forest of bushes and rocks, a river that slows you, bridges, ruins, crystal caves.
+- Terrain:
+  - **Walls** block movement and bullets.
+  - **Low cover** blocks bullets but you can see over it.
+  - **Bushes** hide you until someone is close or you shoot.
+  - **Crates** break and drop loot. **Explosive barrels** blow up when shot.
+  - **Glass** shatters. **Water** slows you down.
+- **Line of sight**: walls cast shadows. You can't see around a corner, and the server doesn't send you players you can't see. That makes flanking and holding angles matter, and stops wallhacks.
+
+### 12.4 One long round
+- **Before the match**: pick your ultimate and draft your first power, using the existing screens.
+- **During the match**: rare **Prism Shards** (in crates and supply drops) open the draft cards as an in-game overlay, without pausing. You get a second power, or upgrade or replace one.
+- The zone shrinks in 6 stages, so a match lasts about 6 to 8 minutes.
+- When you die, you spectate your killer (or haunt as a ghost, as in v1). You can leave or wait for the match to end.
+- **Results**: placement plus kills, on the same podium screen. Rematch drops everyone into a fresh map seed.
+- First to 15 points and between-round standings are removed.
+
+### 12.5 Powers and ultimates in the new world
+All 18 powers and 6 ultimates stay. Anything that touched "basic shots" now works on any gun's bullets: Ricochet Prism, Magnetar, Overdrive, Hunter's Eye, Echo Storm, Third-Party and Void Cloak's crit. Anything that used crystal pillars uses walls and cover instead:
+- Shockwave Slam: hitting a wall does slam damage.
+- Glaive: bounces off walls.
+- Meteor Rain and Rift: break cover.
+
+Numbers get retuned so a power complements your gun rather than replacing it.
+
+### 12.6 Controls (all rebindable in Settings)
+- WASD: move. Left click: shoot. Right click: scope or aim down sights.
+- R: reload. F: pick up or open. 1/2 or scroll: swap weapon.
+- G: throwable. H: heal (hold). Space: dash.
+- Q/E: powers. **X: ultimate** (it moves off R, since R becomes reload).
+
+### 12.7 Bots
+Navigation grid and A* pathfinding around walls. Bots loot (go for better guns, open crates, heal when hurt), use cover and bushes, rotate ahead of the zone, fight over supply drops, and use the existing per-power tactics.
+
+### 12.8 Phases (each ends with typecheck, lint, tests, build, screenshots)
+1. **Map engine**: rectangle and circle geometry, a spatial grid for collisions on a big map, line of sight and shadows, all terrain types, both maps, and neon-style terrain rendering.
+2. **Weapons and loot**: weapon definitions and rarity, firing patterns, reload, crates, floor loot, inventory, throwables, heals and armor, supply drops, death loot piles. Netcode for items, and the HUD for inventory and ammo.
+3. **Mini characters**: hero renderer, 8 heroes, animations, hero select in the lobby.
+4. **Match flow**: one long round, bot fill up to 12, zone retune, pre-match draft, in-match shard drafts, spectating, results.
+5. **Powers pass**: adapt every power and ultimate to guns and walls, then retune.
+6. **Bots**: pathfinding, looting, cover, zone rotation.
+7. **Polish**: a distinct sound per weapon, hit feedback, how-to-play update, e2e screenshots and a full bot match test. Then push the branch.
