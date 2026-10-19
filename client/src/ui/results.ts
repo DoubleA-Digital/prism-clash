@@ -75,7 +75,7 @@ export function standingsScreen(): Built {
       });
       const top = after[0] && rows.get(after[0].id)?.querySelector(".place");
       if (top && after[0] && after[0].points > 0 && !top.querySelector(".crown")) top.prepend(crown());
-      audio.sfx("ui", 0, 0, { positional: false, gain: 0.5 });
+      audio.sfx("uiHover", 0, 0, { positional: false });
     }, 1900),
   );
 

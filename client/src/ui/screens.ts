@@ -55,13 +55,13 @@ export class Screens {
       const t = (e.target as Element | null)?.closest?.(CLICKABLE) ?? null;
       if (t === this.lastHover) return;
       this.lastHover = t;
-      if (t && !t.hasAttribute("disabled") && !t.classList.contains("dim")) audio.sfx("ui", 0, 0, { positional: false, gain: 0.3, pitch: 1.3 });
+      if (t && !t.hasAttribute("disabled") && !t.classList.contains("dim")) audio.sfx("uiHover", 0, 0, { positional: false });
     });
     this.root.addEventListener("click", (e) => {
       const t = (e.target as Element | null)?.closest?.(CLICKABLE);
       if (!t || t.hasAttribute("disabled")) return;
       audio.unlock();
-      audio.sfx(t.matches(".btn.primary, .btn.gold, .card") ? "uiConfirm" : "ui", 0, 0, { positional: false });
+      audio.sfx(t.matches(".btn.primary, .btn.gold, .card") ? "uiConfirm" : t.matches(".x-btn") ? "uiBack" : "uiClick", 0, 0, { positional: false });
     });
   }
 
@@ -176,6 +176,7 @@ export class Screens {
 
   private keys(e: KeyboardEvent) {
     if (e.code === "Escape" && this.modal) {
+      audio.sfx("uiBack", 0, 0, { positional: false });
       this.closeModal();
       return;
     }
@@ -219,7 +220,7 @@ export class Screens {
     const i = items.indexOf(document.activeElement as HTMLElement);
     const next = items[(i + dir + items.length) % items.length];
     next?.focus();
-    audio.sfx("ui", 0, 0, { positional: false, gain: 0.4 });
+    audio.sfx("uiHover", 0, 0, { positional: false });
   }
 
   /** Per-frame UI bits: screen timers, Tab scoreboard, spectator bar, replay bars, panels, gamepad menu nav. */

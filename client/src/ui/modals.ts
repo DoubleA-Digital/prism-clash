@@ -58,7 +58,7 @@ function slider(label: string, value: number, onInput: (v: number) => void, min 
     onInput(v);
     if (performance.now() - last > 90) {
       last = performance.now();
-      audio.sfx("ui", 0, 0, { positional: false, gain: 0.35, pitch: 0.8 + v * 0.5 });
+      audio.sfx("uiClick", 0, 0, { positional: false, gain: 0.35, pitch: 0.8 + v * 0.5 });
     }
   });
   return h("div.slider", null, h("div.top", null, h("span", null, label), out), input);
