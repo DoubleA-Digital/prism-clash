@@ -1,0 +1,18 @@
+# Render blueprint: New + > Blueprint > pick this repo. Free plan works (it sleeps when idle).
+services:
+  - type: web
+    name: prism-clash
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: node server/dist/main.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: LOG_LEVEL
+        value: info
+      - key: MAX_ROOMS
+        value: "200"

@@ -1,7 +1,7 @@
 // The authoritative game world. The server runs one per room at 30 ticks/s. Systems run in
 // a fixed order each tick; everything visual the clients need is emitted as events.
 
-import { ARENA, KILL_CREDIT_SECONDS, NET, PICKUPS, PLAYER, POWERS, SHOT, ULT_CHARGE, ZONE } from "../config";
+import { ARENA, KILL_CREDIT_SECONDS, NET, PICKUPS, PLAYER, POWERS, SHOT, ULT_CHARGE, ULTIMATES, ZONE } from "../config";
 import { Rng } from "../math/rng";
 import { dist2, sweepCircle } from "../math/vec";
 import { buildArena, insideNebula, spawnPoints, type ArenaDef, type LayoutId } from "./arena";
@@ -89,6 +89,8 @@ export class World {
   comboLog: { by: number; name: string; stolen: boolean; tick: number }[] = [];
   /** Damage log for "Most Chaotic Moment" (tick, attacker, amount). */
   damageLog: { tick: number; by: number; amount: number }[] = [];
+  /** Previous distinct attacker per player (see hurtByOther). */
+  private prevDamager = new Map<number, { by: number; at: number }>();
 
   constructor(layout: LayoutId, playerCount: number, seed: number) {
     this.rng = new Rng(seed);
@@ -185,7 +187,7 @@ export class World {
     let crit = !!opts.crit;
     if (attacker && attacker.id !== target.id) {
       // Third-Party: double damage to someone another player is already hurting.
-      if ((attacker.status.thirdParty ?? 0) > 0 && target.damagedBy !== attacker.id && this.time - target.damagedAt <= POWERS.thirdParty.recentWindow) {
+      if ((attacker.status.thirdParty ?? 0) > 0 && this.hurtByOther(target, attacker.id)) {
         dmg *= POWERS.thirdParty.mult;
         crit = true;
       }
@@ -208,6 +210,9 @@ export class World {
       target.lastHitBy = by;
       target.lastHitSource = source;
       target.lastHitTick = this.tick;
+      // Remember the previous distinct attacker too, so a vulture hitting the target doesn't
+      // erase the fact that someone else is also hurting them (Third-Party).
+      if (target.damagedBy && target.damagedBy !== by) this.prevDamager.set(target.id, { by: target.damagedBy, at: target.damagedAt });
       target.damagedAt = this.time;
       target.damagedBy = by;
       if (attacker) {
@@ -221,6 +226,14 @@ export class World {
     this.emit({ t: "hit", target: target.id, by, amount: Math.round(dmg), crit, source, x: opts.x ?? target.x, y: opts.y ?? target.y });
     if (target.hp <= 0.0001) this.kill(target);
     return dmg;
+  }
+
+  /** Did a player other than `attackerId` damage `target` within Third-Party's window? */
+  hurtByOther(target: Player, attackerId: number): boolean {
+    const win = POWERS.thirdParty.recentWindow;
+    if (target.damagedBy && target.damagedBy !== attackerId && this.time - target.damagedAt <= win) return true;
+    const prev = this.prevDamager.get(target.id);
+    return !!prev && prev.by !== attackerId && this.time - prev.at <= win;
   }
 
   chargeUlt(p: Player, amount: number) {
@@ -323,6 +336,12 @@ export class World {
 
   /** Moves one projectile, handling walls, pillars, fields, decoys and players. */
   stepProjectile(pr: Projectile, dt: number, asOfTick = this.tick) {
+    // Held in orbit by an effect (Magnetar), which moves it; it fizzles if nothing refreshes it.
+    if ((pr.flags & PF.captured) !== 0) {
+      pr.life -= dt;
+      if (pr.life <= 0) this.killProjectile(pr);
+      return;
+    }
     let scale = 1;
     for (const e of this.effects.values()) {
       const h = effectHooks(e.kind);
@@ -437,7 +456,7 @@ export class World {
 
   private steerHoming(pr: Projectile, dt: number) {
     let best: Player | null = null;
-    let bd = 520 * 520;
+    let bd = ULTIMATES.huntersEye.homingRange ** 2;
     for (const p of this.players.values()) {
       if (!p.alive || p.id === pr.owner) continue;
       const d = dist2(pr.x, pr.y, p.x, p.y);
@@ -453,7 +472,8 @@ export class World {
     let d = want - cur;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
-    const turn = Math.max(-3.2 * dt, Math.min(3.2 * dt, d));
+    const maxTurn = ULTIMATES.huntersEye.homingTurn * dt;
+    const turn = Math.max(-maxTurn, Math.min(maxTurn, d));
     pr.vx = Math.cos(cur + turn) * sp;
     pr.vy = Math.sin(cur + turn) * sp;
   }
@@ -600,9 +620,12 @@ export class World {
       if (!p.alive) continue;
       const frames = p.connected ? (inputs.get(p.id) ?? []) : [];
       const ts = timeScale.get(p.id) ?? 1;
+      // A connected player only moves on their own input frames (exactly what their client
+      // predicted). A tick without frames is normal network timing, not "standing still".
+      // Disconnected players (and the room's starved-input fallback) drift idle instead.
       const moves: { mi: MoveInput; dt: number }[] = frames.length
         ? frames.map((f) => ({ mi: f, dt: f.dt }))
-        : [{ mi: { mx: 0, my: 0, aim: p.aim, buttons: 0, pressed: 0 }, dt }];
+        : p.connected ? [] : [{ mi: { mx: 0, my: 0, aim: p.aim, buttons: 0, pressed: 0 }, dt }];
       for (const m of moves) {
         const res = movePlayer(p, m.mi, this.arena, this.arena.pillars, m.dt, ts);
         if (res.dashed) this.emit({ t: "dash", by: p.id, x: p.x, y: p.y });
@@ -704,6 +727,10 @@ export class World {
       if (!def) continue;
       if (slot.recast > 0 && def.onRecast) {
         def.onRecast(this, p, slot);
+        // Echo Storm echoes recasts too (second portal, second swap…).
+        if ((p.status.echo ?? 0) > 0) {
+          this.spawnEffect({ kind: "flash", owner: p.id, x: p.x, y: p.y, life: ULTIMATES.echoStorm.echoDelay, source: "echoStorm", n: POWER_IDS.indexOf(slot.id), v: -2 });
+        }
         continue;
       }
       if (slot.cd > 0) continue;
@@ -715,7 +742,7 @@ export class World {
         this.emit({ t: "cast", by: p.id, power: slot.id, x: p.x, y: p.y, angle: p.aim });
         // Echo Storm: cast it again shortly after.
         if ((p.status.echo ?? 0) > 0) {
-          this.spawnEffect({ kind: "flash", owner: p.id, x: p.x, y: p.y, life: 0.25, source: "echoStorm", n: POWER_IDS.indexOf(slot.id), v: -1 });
+          this.spawnEffect({ kind: "flash", owner: p.id, x: p.x, y: p.y, life: ULTIMATES.echoStorm.echoDelay, source: "echoStorm", n: POWER_IDS.indexOf(slot.id), v: -1 });
         }
       }
     }

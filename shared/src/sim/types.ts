@@ -156,6 +156,9 @@ export interface Projectile {
 export const FX_KIND = [
   "portal", "singularity", "clone", "decoy", "glaive", "sigil", "lava", "slowField", "tether", "bubble",
   "magnet", "meteorWarn", "rift", "shockwave", "rewindTrail", "molten", "finalStand", "flash",
+  "overdriveAura", "echoAura", "hunterMark",
+  "beacon", "vulture", "flip",
+  "prismAura", "hexFlash", "phantomDash", "voidBurst",
 ] as const;
 export type EffectKind = (typeof FX_KIND)[number];
 

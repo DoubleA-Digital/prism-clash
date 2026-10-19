@@ -48,8 +48,16 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
   if (!existsSync(file) || statSync(file).isDirectory()) file = join(CLIENT_DIR, "index.html");
   const ext = extname(file);
   const immutable = file.includes(`${join("assets", "")}`);
-  res.writeHead(200, { "content-type": MIME[ext] ?? "application/octet-stream", "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache" });
-  createReadStream(file).pipe(res);
+  const stream = createReadStream(file);
+  stream.on("open", () => {
+    res.writeHead(200, { "content-type": MIME[ext] ?? "application/octet-stream", "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache" });
+    stream.pipe(res);
+  });
+  // A file that vanished (redeploy mid-request) must never take the server down.
+  stream.on("error", () => {
+    if (!res.headersSent) res.writeHead(404);
+    res.end();
+  });
 }
 
 const http = createServer(serveStatic);

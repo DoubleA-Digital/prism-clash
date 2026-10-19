@@ -10,11 +10,12 @@ import { Input } from "./input/input";
 import { session } from "./net/session";
 import { Camera } from "./render/camera";
 import { MenuScene } from "./render/menuScene";
+import { colorHex } from "./render/palette";
 import { Renderer } from "./render/renderer";
 import { settings } from "./settings";
 import { Hud } from "./ui/hud";
+import { Reticle } from "./ui/reticle";
 
-const TICK_MS = 1000 / NET.tickRate;
 
 export class Game {
   readonly canvas: HTMLCanvasElement;
@@ -25,6 +26,7 @@ export class Game {
   private renderer: Renderer;
   private menuScene = new MenuScene();
   readonly hud = new Hud();
+  private reticle = new Reticle();
   private killFeed: KillFeedItem[] = [];
   private firedAt = new Map<number, number>();
   private last = performance.now();
@@ -33,6 +35,7 @@ export class Game {
   private arenaSeed = -1;
   private ec: EventContext;
   private lastCount = -1;
+  private lastPhase = "";
   private wasRound = false;
   private replay: { tick: number; end: number; lastEventTick: number } | null = null;
   private spectateIdx = 0;
@@ -57,7 +60,11 @@ export class Game {
       banner: (t, s, c) => this.hud.banner(t, s, c),
       onSelfHit: () => this.hud.selfHit(),
     };
-    session.onGameEvent((e, imm) => handleEvent(this.ec, e, imm));
+    session.onGameEvent((e, imm) => {
+      handleEvent(this.ec, e, imm);
+      if (e.t === "hit" && e.by === session.myId && e.amount > 0 && e.target !== session.myId) this.reticle.onHit(e.crit);
+      if (e.t === "kill" && e.killer === session.myId) this.reticle.onKill();
+    });
     window.addEventListener("resize", () => this.resize());
     this.resize();
     canvas.addEventListener("mousedown", (e) => this.ghostClick(e));
@@ -143,7 +150,10 @@ export class Game {
       const aim = this.aimFrom(view.me.x + view.offX, view.me.y + view.offY);
       const b = this.input.buttons();
       const frame = view.predict(mv.x, mv.y, aim, b.held, b.pressed, dt);
-      if (frame) session.sendInput(frame);
+      if (frame) {
+        session.sendInput(frame);
+        if (frame.shotId) this.reticle.onShoot();
+      }
     } else if (phase === "round") {
       this.ghostControls(view.latest?.ents ? [...view.viewAt(view.renderTick(now))?.players ?? []] : []);
       // Keep acking snapshots while dead so deltas stay small.
@@ -198,6 +208,7 @@ export class Game {
     }
     this.cam.update(fxDt || dt * 0.2, this.time);
     audio.setListener(this.cam.x, this.cam.y);
+    audio.matchFrame(v ?? null, this.cam, phase, view.me ? view.me.hp : null);
 
     const selfBits = view.self?.status ?? 0;
     this.renderer.render({
@@ -216,6 +227,14 @@ export class Game {
         arenaRadius: view.arena.radius, names: (id) => session.playerName(id), colors: (id) => session.playerColor(id),
         killFeed: this.killFeed, ping: session.rtt, showPing: settings.showPing, fps: this.fps, showFps: settings.showFps || this.debugHitboxes,
         time: this.time, dt, input: this.input, colorblind: settings.colorblind, revealed, huntersEye: hasStatusBit(selfBits, "hunter"), round: session.round,
+      });
+      // The reticle replaces the mouse cursor while you're alive in a round.
+      const showReticle = phase === "round" && !!view.me && !this.input.usingPad;
+      this.canvas.style.cursor = showReticle ? "none" : "crosshair";
+      const ps = this.cam.toScreen(meX, meY);
+      this.reticle.draw(this.ctx, {
+        dpr: this.cam.dpr, mx: this.input.mouseX, my: this.input.mouseY, px: ps.x, py: ps.y, scale: this.cam.scale,
+        ammo: view.hudAmmo.ammo, reload: view.hudAmmo.reload, color: colorHex(session.playerColor(session.myId)), dt, visible: showReticle,
       });
     }
   }
@@ -295,18 +314,20 @@ export class Game {
   }
 
   private music(phase: string, _stage: number, _alive: number) {
-    const m = audio.music;
-    if (!m) return;
     if (phase === "round" || phase === "countdown" || phase === "replay") {
-      m.start(0.34);
-      m.setIntensity(this.intensity());
+      audio.startMusic(0.34, "game");
+      audio.music?.setIntensity(this.intensity());
     } else if (phase === "menu" || phase === "lobby") {
-      m.start(0.18);
-      m.setIntensity(0.05);
+      audio.startMusic(0.18, "menu");
     } else {
-      m.start(0.24);
-      m.setIntensity(0.2);
+      audio.startMusic(0.24, "game");
+      audio.music?.setIntensity(0.2);
     }
-    void TICK_MS;
+    // Stings: when the final blow replay starts, and when the match ends.
+    if (phase !== this.lastPhase) {
+      if (phase === "replay") audio.sting("roundEnd");
+      if (phase === "matchEnd") audio.sting(session.matchEnd?.winnerId === session.myId ? "win" : "lose");
+      this.lastPhase = phase;
+    }
   }
 }

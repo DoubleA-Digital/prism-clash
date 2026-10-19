@@ -58,6 +58,8 @@ export class Session {
   private eventListeners = new Set<(e: GameEvent, immediate: boolean) => void>();
   private pingTimer = 0;
   private sentFrames: InputFrame[] = [];
+  private unsent: InputFrame[] = [];
+  private lastInputSend = 0;
   private pendingJoin: { create: boolean; testRoom: boolean; code: string } | null = null;
 
   constructor() {
@@ -184,12 +186,22 @@ export class Session {
     this.conn.send({ type: C2S.debugGrant, playerId, power });
   }
 
-  /** Sends this frame's input plus the last few (redundancy against dropped packets). */
+  /**
+   * Queues this frame's input and sends at most ~60 messages a second (high-refresh
+   * monitors batch several frames per message). Each message also repeats the previous
+   * two frames, so a dropped packet never loses movement.
+   */
   sendInput(f: InputFrame) {
-    this.sentFrames.push(f);
-    if (this.sentFrames.length > 4) this.sentFrames.shift();
+    this.unsent.push(f);
+    const now = performance.now();
+    if (now - this.lastInputSend < 15 && this.unsent.length < 6) return;
+    this.lastInputSend = now;
+    const frames = [...this.sentFrames.slice(-2), ...this.unsent];
+    this.sentFrames.push(...this.unsent);
+    if (this.sentFrames.length > 8) this.sentFrames.splice(0, this.sentFrames.length - 8);
+    this.unsent = [];
     const ack = this.view?.lastTick ?? -1;
-    this.conn.send({ type: C2S.input, frames: this.sentFrames.map(inputToWire), ackTick: ack });
+    this.conn.send({ type: C2S.input, frames: frames.slice(-8).map(inputToWire), ackTick: ack });
   }
 
   phaseRemaining(now = performance.now()): number {
@@ -284,6 +296,7 @@ export class Session {
         this.view = new NetView(m.layout, m.playerCount, m.seed, this.myId);
         this.view.onEvent = (e, imm) => this.eventListeners.forEach((f) => f(e, imm));
         this.sentFrames = [];
+        this.unsent = [];
         this.roundEnd = null;
       }
     }

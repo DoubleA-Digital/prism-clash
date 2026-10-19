@@ -203,7 +203,8 @@ export class Room {
           const f = inputFromWire(raw);
           if (f) m.inputs.push(f);
         }
-        if (m.inputs.length > 24) m.inputs.splice(0, m.inputs.length - 24);
+        // About two seconds of frames; beyond that the client is far ahead of real time.
+        if (m.inputs.length > 150) m.inputs.splice(0, m.inputs.length - 150);
         return;
       }
       case C2S.lobbySet:
@@ -377,6 +378,7 @@ export class Room {
       p.connected = m.connected;
       m.inputs = [];
       m.dtBudget = 0;
+      m.budgetAt = 0;
       m.ackTick = -1;
       m.baselines.clear();
       m.spectate = 0;
@@ -580,8 +582,12 @@ export class Room {
         if (brain && p.alive) inputs.set(m.id, [brain.think(w, p)]);
         continue;
       }
-      // Anti speed-hack: a player can't simulate more time than has passed.
-      m.dtBudget = Math.min(m.dtBudget + w.dt, 0.25);
+      // Anti speed-hack: a player can't simulate more time than has really passed (wall
+      // clock, so a busy server that ticks late doesn't starve honest clients), plus slack.
+      const nowMs = performance.now();
+      const elapsed = m.budgetAt ? (nowMs - m.budgetAt) / 1000 : w.dt;
+      m.budgetAt = nowMs;
+      m.dtBudget = Math.min(m.dtBudget + Math.min(elapsed, 0.5), 0.35);
       const frames: InputFrame[] = [];
       const rest: InputFrame[] = [];
       let lastSeq = p.ackSeq;
@@ -596,6 +602,12 @@ export class Room {
         frames.push(f);
       }
       m.inputs = rest;
+      // Starved for a quarter second (tab in background, packet stall): move them idle so
+      // pulls and knockback still apply. Their client reconciles when inputs resume.
+      if (frames.length === 0 && m.dtBudget >= 0.34) {
+        m.dtBudget -= w.dt;
+        frames.push({ seq: p.ackSeq, mx: 0, my: 0, aim: p.aim, buttons: 0, pressed: 0, dt: w.dt, shotId: 0 });
+      }
       inputs.set(m.id, frames);
       w.latencyTicks.set(m.id, Math.round(((m.rttMs / 2 + 100) / 1000) * NET.tickRate));
     }

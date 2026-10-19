@@ -15,6 +15,10 @@ export interface RenderCtx {
   /** Player by id from the current view (interpolated), if visible. */
   player(id: number): NetPlayer | undefined;
   playerName(id: number): string;
+  /** Where a player's core is drawn this frame (predicted for the local player), if visible. */
+  pos?(id: number): { x: number; y: number } | undefined;
+  /** Hunter's Eye / spectating: cloaked players are shown clearly. */
+  seeCloaked?: boolean;
   fx: Fx;
   /** 1 / camera scale: multiply screen pixel sizes by this for world units. */
   invScale: number;

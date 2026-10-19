@@ -109,8 +109,15 @@ export class Renderer {
     const rc: RenderCtx = {
       ctx, time: f.time, dt: f.dt, myId: f.myId, fx: this.fx, invScale,
       color: (id) => colorHex(f.colors(id)),
-      player: (id) => view?.players.find((p) => p.id === id),
+      // The local player is drawn at its predicted position; effects that follow a player
+      // (auras, tethers, clones) must use the same spot or they'd trail ~100 ms behind.
+      player: (id) => {
+        const p = view?.players.find((q) => q.id === id);
+        return p && id === f.myId && f.me ? { ...p, x: f.me.x + f.meOff.x, y: f.me.y + f.meOff.y, aim: f.me.aim } : p;
+      },
       playerName: f.names,
+      pos: (id) => (id === f.myId && f.me ? { x: f.me.x + f.meOff.x, y: f.me.y + f.meOff.y } : view?.players.find((p) => p.id === id)),
+      seeCloaked: f.seeCloaked,
     };
 
     this.floor.draw(ctx, f.time, bounds);

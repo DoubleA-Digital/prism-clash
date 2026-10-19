@@ -1,0 +1,6 @@
+node_modules
+**/node_modules
+**/dist
+.nettest
+e2e/out
+.git

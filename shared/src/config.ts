@@ -140,31 +140,56 @@ export const HAZARD_TICK = 0.25;
 
 /** Powers. Cooldowns are in seconds; everything a power uses lives here. */
 export const POWERS = {
-  chronoRewind: { cooldown: 14, window: 2.5 },
+  chronoRewind: { cooldown: 14, window: 2.5, trailPoints: 9, trailLife: 1.1, arriveInvuln: 0.2 },
   singularity: { cooldown: 16, speed: 360, fuse: 0.8, duration: 2.5, radius: 330, pull: 1250, projectilePull: 2400, damage: 25, coreRadius: 70, detonateRadius: 160 },
-  mirrorSelf: { cooldown: 18, duration: 6, damageMult: 0.4, fireCooldown: 0.34 },
+  mirrorSelf: { cooldown: 18, duration: 6, damageMult: 0.4, fireCooldown: 0.34, hp: 33, radius: 26, aimDistance: 420 },
   portalPair: { cooldown: 15, duration: 10, radius: 46, exitCooldown: 0.35, placeWindow: 6 },
-  stormTether: { cooldown: 13, speed: 1500, range: 720, maxLength: 470, snapDamage: 30, chipDps: 3, duration: 5 },
+  stormTether: { cooldown: 13, speed: 1500, range: 720, maxLength: 470, snapDamage: 30, chipDps: 3, duration: 5, boltDamage: 6, boltRadius: 10, chipInterval: 0.5, snapLinger: 0.45, slack: 140 },
   timeBubble: { cooldown: 17, duration: 4, radius: 260, slow: 0.25, exitSpeedMult: 1.6, exitDamageMult: 1.2 },
   ricochetPrism: { cooldown: 14, duration: 6, maxBounces: 4, damagePerBounce: 0.22 },
-  phantomMark: { cooldown: 11, dashSpeedMult: 3.6, dashDuration: 0.22, fuse: 1.5, damage: 20, shotMult: 2 },
-  hexSwap: { cooldown: 20, range: 900, coneDeg: 32, retargetWithin: 0.6 },
-  magnetar: { cooldown: 15, duration: 5, radius: 150, maxCaptured: 12, orbitRadius: 58, releaseSpeed: 1050 },
-  voidCloak: { cooldown: 16, duration: 3, shimmerAlpha: 0.08 },
-  moltenPath: { cooldown: 13, duration: 4, trailLife: 3, dps: 16, dropEvery: 0.07, radius: 34 },
-  boomerangGlaive: { cooldown: 8, outSpeed: 980, range: 560, damage: 18, radius: 22, catchRadius: 52, hitCooldown: 0.35 },
-  gravityFlip: { cooldown: 19, speed: 760, radius: 18, duration: 2.5, damage: 8 },
+  phantomMark: { cooldown: 11, dashSpeedMult: 3.6, dashDuration: 0.22, fuse: 1.5, damage: 20, shotMult: 2, markPad: 18, iframePad: 0.06, burstRadius: 90, streakLinger: 0.45 },
+  /** coneDeg is the half-angle either side of the aim. */
+  hexSwap: { cooldown: 20, range: 900, coneDeg: 32, retargetWithin: 0.6, retargetPad: 14, lavaLockSlow: 1.4, flashLife: 0.55 },
+  magnetar: { cooldown: 15, duration: 5, radius: 150, maxCaptured: 12, orbitRadius: 58, releaseSpeed: 1050, orbitSpeed: 4.5, holdLife: 0.4, releaseLife: 0.9 },
+  voidCloak: { cooldown: 16, duration: 3, shimmerAlpha: 0.08, burstLife: 0.6, critGrace: 1.5 },
+  /** Lava drops every dropEvery while moving (at least minSpacing apart), every idleDropEvery
+   *  when standing still. Each drop is a capsule back to the previous one, so the trail is solid. */
+  moltenPath: { cooldown: 13, duration: 4, trailLife: 3, dps: 16, dropEvery: 0.07, radius: 34, minSpacing: 14, idleDropEvery: 0.3 },
+  /** Outbound: decelerates from outSpeed to 0 over `range` while curving sideways (curve = peak
+   *  sideways speed as a fraction of outSpeed). Then it flies back to the throw point at
+   *  returnSpeed; within catchAssist of the thrower it's pulled into their hand (caught within
+   *  catchRadius). Hitting a pillar or wall turns it around early. In a Singularity it orbits. */
+  boomerangGlaive: {
+    cooldown: 8, outSpeed: 980, range: 560, damage: 18, radius: 22, catchRadius: 52, hitCooldown: 0.35,
+    curve: 0.24, returnSpeed: 1150, returnSteer: 7, catchAssist: 120, maxFlight: 4, knockback: 260, pillarDamage: 4, caughtLinger: 0.45,
+    captureRadius: 170, orbitRadius: 95, orbitSpeed: 7, orbitHitRadius: 150,
+  },
+  gravityFlip: { cooldown: 19, speed: 760, radius: 18, duration: 2.5, damage: 8, range: 860 },
   bountyBeacon: { cooldown: 22, duration: 6, ultPerDamage: 1.4 },
-  decoySwarm: { cooldown: 15, count: 5, speed: 420, life: 4, flashRadius: 170, flashBlind: 1.1 },
-  shockwaveSlam: { cooldown: 12, airTime: 0.45, radius: 260, knockback: 1150, damage: 14, wallBonus: 1.0 },
-  thirdParty: { cooldown: 18, duration: 5, recentWindow: 1.0, mult: 2 },
+  /** Decoys burst out at `speed`, slow with `drag`, then wander at wanderSpeed. A hit pops one:
+   *  enemies within flashRadius are blinded for flashBlind seconds. */
+  decoySwarm: { cooldown: 15, count: 5, speed: 420, life: 4, flashRadius: 170, flashBlind: 1.1, radius: 17, drag: 2.4, wanderSpeed: 150, wanderTurn: 7 },
+  /** Knockback falls off to minKnock (fraction) at the edge. Anyone knocked into a wall or pillar
+   *  within comboWindow takes wallBonus × ARENA.wallSlamDamage extra; anyone knocked into a
+   *  Singularity's detonation zone within comboWindow triggers Gravity Slam. */
+  shockwaveSlam: { cooldown: 12, airTime: 0.45, radius: 260, knockback: 1450, damage: 14, wallBonus: 1.0, minKnock: 0.6, comboWindow: 0.8 },
+  /** Targets someone else hurt within recentWindow take mult damage from you; the caster sees
+   *  a crosshair on them that lingers markerLinger after they stop qualifying. */
+  thirdParty: { cooldown: 18, duration: 5, recentWindow: 1.0, mult: 2, markerLinger: 0.25 },
 } as const;
 
 export const ULTIMATES = {
-  meteorRain: { count: 12, duration: 3, radius: 420, impactRadius: 95, damage: 22, warn: 0.75, range: 640 },
-  overdrive: { duration: 6, fireRateMult: 2 },
-  riftCollapse: { pullTime: 3, pull: 900, closeDamage: 45, closeRadius: 150, halfLength: 900 },
+  /** Meteors land at evenly spread (jittered) points of a disc centered `centerDist` along your
+   *  aim (pulled back toward you if that's outside the arena). Each shows its warning circle
+   *  for `warn` seconds; impacts are spread over `duration`. */
+  meteorRain: { count: 12, duration: 3, radius: 420, impactRadius: 95, damage: 22, warn: 0.75, centerDist: 420, jitter: 0.35, knock: 420 },
+  /** fireRateMult divides the shot cooldown (and shots cost no ammo); reloadMult speeds ammo refill. */
+  overdrive: { duration: 6, fireRateMult: 2, reloadMult: 2.2 },
+  /** Pull is a per-second impulse (steady drift ≈ 180 u/s, slower than walking, so you can
+   *  fight it), scaled from nearMult on the line to farMult at farRange. */
+  riftCollapse: { pullTime: 3, pull: 900, nearMult: 1.25, farMult: 0.6, farRange: 1200, closeDamage: 45, closeRadius: 150, closeKnock: 650, halfLength: 900, afterglow: 0.5 },
   echoStorm: { duration: 8, echoDelay: 0.25 },
+  /** While charging you're immune (damage is absorbed), slowed and can't shoot. */
   finalStand: { charge: 3, baseDamage: 20, absorbMult: 0.8, maxDamage: 75, radius: 380, knockback: 900 },
   huntersEye: { duration: 8, homingTurn: 3.2, homingRange: 520 },
 } as const;

@@ -8,6 +8,26 @@ import { drawGlow, withAlpha } from "../glow";
 import { colorHex } from "../palette";
 import { drawPortal } from "./portal";
 import { drawSingularity, drawSingularityOrb } from "./singularity";
+import { drawEchoAura, drawHunterMark, drawOverdriveAura } from "./auras";
+import { drawFinalStand } from "./final-stand";
+import { drawMeteorWarn } from "./meteor-rain";
+import { drawRift } from "./rift-collapse";
+import { drawMolten } from "./molten";
+import { drawGlaive } from "./glaive";
+import { drawFlip, drawGravityOrb } from "./gravity";
+import { drawBeacon } from "./bounty";
+import { drawDecoy } from "./decoy";
+import { drawShockwave } from "./slam";
+import { drawVulture } from "./third-party";
+import { drawRewindTrail } from "./chrono";
+import { drawClone } from "./mirror";
+import { drawTether, drawTetherBolt } from "./tether";
+import { drawBubble } from "./bubble";
+import { drawPrismAura } from "./prism";
+import { drawPhantomDash, drawSigil } from "./phantom";
+import { drawHexFlash } from "./hex";
+import { drawMagnet } from "./magnet";
+import { drawVoidBurst } from "./cloak";
 import type { EffectDrawer, ProjectileDrawer, RenderCtx } from "./types";
 
 export const EFFECT_DRAWERS: Partial<Record<EffectKind, EffectDrawer>> = {
@@ -16,14 +36,39 @@ export const EFFECT_DRAWERS: Partial<Record<EffectKind, EffectDrawer>> = {
   lava: drawLava,
   slowField: drawSlowField,
   flash: () => {},
+  meteorWarn: drawMeteorWarn,
+  rift: drawRift,
+  finalStand: drawFinalStand,
+  overdriveAura: drawOverdriveAura,
+  echoAura: drawEchoAura,
+  hunterMark: drawHunterMark,
+  molten: drawMolten,
+  glaive: drawGlaive,
+  flip: drawFlip,
+  beacon: drawBeacon,
+  decoy: drawDecoy,
+  shockwave: drawShockwave,
+  vulture: drawVulture,
+  rewindTrail: drawRewindTrail,
+  clone: drawClone,
+  tether: drawTether,
+  bubble: drawBubble,
+  prismAura: drawPrismAura,
+  phantomDash: drawPhantomDash,
+  sigil: drawSigil,
+  hexFlash: drawHexFlash,
+  magnet: drawMagnet,
+  voidBurst: drawVoidBurst,
 };
 
 export const PROJECTILE_DRAWERS: Partial<Record<SourceId, ProjectileDrawer>> = {
   singularity: drawSingularityOrb,
+  gravityFlip: drawGravityOrb,
+  stormTether: drawTetherBolt,
 };
 
 /** Effects drawn under players (floor hazards) vs over them. */
-export const FLOOR_EFFECTS: ReadonlySet<EffectKind> = new Set<EffectKind>(["lava", "slowField", "molten", "meteorWarn", "bubble", "rift", "sigil", "rewindTrail"]);
+export const FLOOR_EFFECTS: ReadonlySet<EffectKind> = new Set<EffectKind>(["lava", "slowField", "molten", "meteorWarn", "bubble", "rift", "rewindTrail"]);
 
 export function drawEffect(rc: RenderCtx, e: NetEffect) {
   const d = EFFECT_DRAWERS[e.kind];

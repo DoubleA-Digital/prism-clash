@@ -4,12 +4,14 @@ import "./ui/style.css";
 import "@prism/shared";
 import { audio } from "./audio/audio";
 import { Game } from "./game";
+import { installDevHooks } from "./devhooks";
 import { applySettings } from "./settings";
 import { Screens } from "./ui/screens";
 
 const canvas = document.getElementById("game");
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("#game canvas missing");
 
+installDevHooks();
 applySettings();
 const game = new Game(canvas);
 new Screens(game);

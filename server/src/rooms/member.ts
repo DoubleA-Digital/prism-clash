@@ -35,8 +35,9 @@ export interface Member {
 
   // Netcode
   inputs: InputFrame[];
-  /** Simulation time the player may still spend (anti speed-hack). */
+  /** Simulation time the player may still spend (anti speed-hack), refilled by real elapsed time. */
   dtBudget: number;
+  budgetAt: number;
   ackTick: number;
   baselines: Map<number, EntityMap>;
   rttMs: number;
@@ -50,7 +51,7 @@ export function newMember(id: number, name: string, token: string, bot: boolean,
     id, name, color: 0, ready: bot, bot, token, ws: null, connected: true, disconnectedAt: 0, joinedAt: now, ip,
     points: 0, roundWins: 0, totalKills: 0, totalDamage: 0, totalShots: 0, totalHits: 0, totalCombos: 0, powersUsed: new Set(), placements: [],
     loadout: { slots: [null, null], older: 0 }, ult: null, ultOptions: [], draftOptions: [], draftPick: null, ultPick: null,
-    inputs: [], dtBudget: 0, ackTick: -1, baselines: new Map(), rttMs: 80, spectate: 0, hauntReadyAt: 0,
+    inputs: [], dtBudget: 0, budgetAt: 0, ackTick: -1, baselines: new Map(), rttMs: 80, spectate: 0, hauntReadyAt: 0,
     rate: { second: 0, inputs: 0, other: 0, strikes: 0 },
   };
 }

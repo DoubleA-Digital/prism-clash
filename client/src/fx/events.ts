@@ -135,7 +135,7 @@ export function handleEvent(ec: EventContext, e: GameEvent, immediate: boolean) 
       const col = e.kind === "heal" ? PAL.heal : e.kind === "cooldown" ? PAL.cooldown : e.kind === "ult" ? PAL.ult : PAL.prism;
       fx.particles.burst(e.x, e.y, 24, col, 300, 0.6, 8);
       fx.ring(e.x, e.y, 10, 90, 0.4, col, 4);
-      audio.sfx("pickup", e.x, e.y, { pitch: e.kind === "prism" ? 1.5 : 1 });
+      audio.sfx(`pickup:${e.kind}`, e.x, e.y);
       if (e.by === ec.myId) {
         const text = e.kind === "heal" ? "+20 HEALTH" : e.kind === "cooldown" ? "COOLDOWNS RESET" : e.kind === "ult" ? "+ULT CHARGE" : "PRISM CORE!";
         fx.label(e.x, e.y - 50, text, e.kind === "prism" ? "Press F for your 3rd power" : "", col);

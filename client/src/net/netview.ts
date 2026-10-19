@@ -54,6 +54,8 @@ export interface NetDebug {
   estServerTick: number;
   renderTick: number;
   late: number;
+  /** Recent corrections with context (F2 panel / tests). */
+  recent: { err: number; pending: number; dashing: boolean; vx: number; vy: number; ex: number; ey: number }[];
 }
 
 function statusFromBits(bits: number): Statuses {
@@ -83,7 +85,7 @@ export class NetView {
   private offsetInit = false;
   private jitter = 0;
   delayTicks: number = NET.interpDelayTicks;
-  debug: NetDebug = { corrections: 0, correctionsPerMin: 0, maxCorrection: 0, lastCorrection: 0, interpDelayTicks: 3, estServerTick: 0, renderTick: 0, late: 0 };
+  debug: NetDebug = { corrections: 0, correctionsPerMin: 0, maxCorrection: 0, lastCorrection: 0, interpDelayTicks: 3, estServerTick: 0, renderTick: 0, late: 0, recent: [] };
   private corrWindow: number[] = [];
   private pendingEvents: { tick: number; e: GameEvent }[] = [];
   /** Mirror of the server's ammo/fire timing so predicted shots match real ones. */
@@ -168,8 +170,9 @@ export class NetView {
       this.pending = [];
       return;
     }
-    const oldX = this.me ? this.me.x + this.offX : self.x;
-    const oldY = this.me ? this.me.y + this.offY : self.y;
+    // Where we had predicted ourselves (without the visual offset).
+    const oldX = this.me ? this.me.x : self.x;
+    const oldY = this.me ? this.me.y : self.y;
     const me = this.me ?? this.blankMe();
     me.x = self.x;
     me.y = self.y;
@@ -205,9 +208,12 @@ export class NetView {
       this.offX = 0;
       this.offY = 0;
     } else {
-      this.offX = ex;
-      this.offY = ey;
+      // Keep drawing where we were and slide to the corrected spot over ~100 ms.
+      this.offX += ex;
+      this.offY += ey;
       if (err > 2) {
+        this.debug.recent.push({ err, pending: this.pending.length, dashing: me.dashT > 0 || self.dashT > 0, vx: me.vx, vy: me.vy, ex, ey });
+        if (this.debug.recent.length > 20) this.debug.recent.shift();
         this.debug.corrections++;
         this.corrWindow.push(performance.now());
         this.debug.lastCorrection = err;

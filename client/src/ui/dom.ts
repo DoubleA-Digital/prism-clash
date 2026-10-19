@@ -39,3 +39,11 @@ export function h<K extends keyof HTMLElementTagNameMap>(tagSpec: K | string, at
 export function clear(el: HTMLElement) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
+
+/** Builds an element from a trusted, hard-coded SVG/HTML string (never user text). */
+export function raw(tag: string, cls: string, html: string): HTMLElement {
+  const el = document.createElement(tag);
+  el.className = cls;
+  el.innerHTML = html;
+  return el;
+}
