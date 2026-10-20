@@ -3,6 +3,8 @@
 // Music is a procedural synthwave loop that intensifies as the round gets tense. World
 // effects get spawn/end sounds and positional loops (effectSounds.ts). The master chain is a
 // glue compressor followed by a fast brick-wall-ish limiter so stacked sounds never clip.
+// Voices are limited per group (e.g. one gun type) and globally; a louder new sound steals
+// the quietest voice's slot with a short fade. v2 sounds are driven from gameAudio.ts.
 
 import { PLAYER, type NetEffect, type NetProjectile } from "@prism/shared";
 import { EffectSounds } from "./effectSounds";
@@ -13,6 +15,28 @@ export interface SfxOpts {
   gain?: number;
   pitch?: number;
   positional?: boolean;
+  /** Hearing range in world units (default 1600). Gunshots use a longer one so far fights stay audible. */
+  range?: number;
+  /** Distance at which the level has dropped to half (default 420). */
+  ref?: number;
+  /** Voice-limiting group: at most `cap` voices of a group play at once; the quietest is stolen. */
+  group?: string;
+  cap?: number;
+}
+
+/** Where a sound sits relative to the listener: level multiplier, stereo pan and air absorption. */
+export interface Spatial {
+  gain: number;
+  pan: number;
+  lowpass: number;
+  dist: number;
+}
+
+interface ActiveVoice {
+  end: number;
+  gain: number;
+  group: string;
+  out: GainNode;
 }
 
 export interface RecipeLevel {
@@ -24,8 +48,10 @@ export interface RecipeLevel {
   tail: number;
 }
 
-const MAX_VOICES = 24;
+const MAX_VOICES = 32;
 const HEAR_RANGE = 1600;
+const REF_DIST = 420;
+const DEFAULT_GROUP_CAP = 6;
 const LOW_HP = 0.3;
 const STALE_MS = 400;
 
@@ -44,7 +70,7 @@ class AudioEngine {
   private musicBus: GainNode | null = null;
   private musicLp: BiquadFilterNode | null = null;
   private noise: AudioBuffer | null = null;
-  private voices: { end: number; gain: number }[] = [];
+  private voices: ActiveVoice[] = [];
   private listener = { x: 0, y: 0 };
   private nextBeat = 0;
   private lowHpAt = 0;
@@ -162,6 +188,33 @@ class AudioEngine {
     this.music?.start(level, variant);
   }
 
+  /** Listener position (camera center) used for positional mixing. */
+  get listenerPos(): { x: number; y: number } {
+    return this.listener;
+  }
+
+  /**
+   * Positional mix for a point: inverse-square-ish falloff with a small floor (so far sounds
+   * stay faintly audible until the range edge), pan by horizontal offset, and a low-pass that
+   * closes with distance. Null when out of range.
+   */
+  spatial(x: number, y: number, range = HEAR_RANGE, ref = REF_DIST): Spatial | null {
+    const dx = x - this.listener.x;
+    const dy = y - this.listener.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > range) return null;
+    const edge = 1 - dist / range;
+    const gain = Math.min(1, 1 / (1 + (dist / ref) ** 2) + 0.05 * Math.min(1, edge * 4));
+    const pan = Math.max(-1, Math.min(1, dx / 700));
+    const lowpass = range === HEAR_RANGE ? 20000 - Math.min(16000, dist * 9) : 700 + 19300 * edge ** 2.4;
+    return { gain, pan, lowpass, dist };
+  }
+
+  /** Output for long-lived sounds (charge hums, heal loops, drones) built outside recipes. */
+  loopOutput(): { ctx: AudioContext; bus: AudioNode; noise: AudioBuffer } | null {
+    return this.ctx && this.sfxBus && this.noise && this.ctx.state === "running" ? { ctx: this.ctx, bus: this.sfxBus, noise: this.noise } : null;
+  }
+
   sfx(name: string, x: number, y: number, opts: SfxOpts = {}) {
     const ctx = this.ctx;
     if (!ctx || !this.sfxBus || !this.noise || ctx.state !== "running") return;
@@ -169,24 +222,23 @@ class AudioEngine {
     let pan = 0;
     let lowpass = 20000;
     if (opts.positional !== false) {
-      const dx = x - this.listener.x;
-      const dy = y - this.listener.y;
-      const d = Math.hypot(dx, dy);
-      if (d > HEAR_RANGE) return;
-      gain *= Math.min(1, 1 / (1 + (d / 420) ** 2) + 0.05);
-      pan = Math.max(-1, Math.min(1, dx / 700));
-      lowpass = 20000 - Math.min(16000, d * 9);
+      const sp = this.spatial(x, y, opts.range, opts.ref);
+      if (!sp) return;
+      gain *= sp.gain;
+      pan = sp.pan;
+      lowpass = sp.lowpass;
     }
-    if (gain < 0.03) return;
-    // Voice limit: drop the quietest sounds first.
-    const now = ctx.currentTime;
-    this.voices = this.voices.filter((v) => v.end > now);
-    if (this.voices.length >= MAX_VOICES) {
-      const quietest = Math.min(...this.voices.map((v) => v.gain));
-      if (gain <= quietest) return;
-    }
+    if (gain < 0.02) return;
     const recipe = RECIPES[name] ?? (name.startsWith("cast:") ? RECIPES.cast : undefined);
     if (!recipe) return;
+    // Voice limiting: per group, then globally. A new sound louder than the quietest playing
+    // one steals its slot (quick fade); otherwise it is dropped.
+    const now = ctx.currentTime;
+    this.voices = this.voices.filter((v) => v.end > now);
+    const group = opts.group ?? name;
+    const cap = opts.cap ?? (opts.group ? DEFAULT_GROUP_CAP : MAX_VOICES);
+    if (!this.makeRoom(this.voices.filter((v) => v.group === group), cap, gain, now)) return;
+    if (!this.makeRoom(this.voices, MAX_VOICES, gain, now)) return;
     const out = ctx.createGain();
     out.gain.value = gain;
     const panner = ctx.createStereoPanner();
@@ -197,7 +249,22 @@ class AudioEngine {
     out.connect(lp).connect(panner).connect(this.sfxBus);
     const voice: Voice = { ctx, out, noise: this.noise, t: now, pitch: opts.pitch ?? 1, seed: hash(name) };
     const dur = recipe(voice);
-    this.voices.push({ end: now + dur, gain });
+    this.voices.push({ end: now + dur, gain, group, out });
+  }
+
+  /** Frees a slot in `pool` (size `cap`) for a voice of level `gain`; false if it should be dropped. */
+  private makeRoom(pool: ActiveVoice[], cap: number, gain: number, now: number): boolean {
+    if (pool.length < cap) return true;
+    let victim: ActiveVoice | null = null;
+    for (const v of pool) if (!victim || v.gain < victim.gain || (v.gain === victim.gain && v.end < victim.end)) victim = v;
+    if (!victim || gain <= victim.gain * 0.9) return false;
+    const g = victim.out.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(0, now + 0.025);
+    const dead = victim;
+    this.voices = this.voices.filter((v) => v !== dead);
+    return true;
   }
 }
 

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prism Clash Soundboard</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root { color-scheme: dark; --bg: #05040d; --panel: #0e0c1f; --line: #2a2550; --text: #e8e6ff; --dim: #8f8ab8; --accent: #00f0ff; --hot: #ff2e88; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; padding: 16px; }
+      h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.04em; color: var(--accent); }
+      p.note { margin: 0 0 16px; color: var(--dim); }
+      .controls { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 12px; margin: 0 -16px 16px; background: rgba(5, 4, 13, 0.94); border-bottom: 1px solid var(--line); }
+      .controls label { display: flex; gap: 6px; align-items: center; color: var(--dim); }
+      .controls output { min-width: 4ch; color: var(--text); font-variant-numeric: tabular-nums; }
+      section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+      section h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--hot); }
+      .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+      button { background: #17143a; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; }
+      button:hover { border-color: var(--accent); }
+      button:active, button.on { background: #00f0ff22; border-color: var(--accent); }
+      #unlock { background: var(--accent); color: #000; font-weight: 700; border: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Prism Clash soundboard</h1>
+    <p class="note">Dev only (not part of the production build). Every sound is synthesized. Click "Start audio" first. Distance and side place positional sounds relative to the listener.</p>
+    <div class="controls" id="controls"></div>
+    <div id="board"></div>
+    <script type="module" src="/src/audio/soundPreview.ts"></script>
+  </body>
+</html>

@@ -1,8 +1,12 @@
 // Sound recipes. Each builds a short graph on `v.out` starting at time v.t and returns its
 // duration. Names: plain events ("hit"), `cast:<power|ult>`, `pickup:<kind>`, and effect
-// lifecycle sounds `fx:<kind>:on` / `fx:<kind>:off` played by the effect tracker.
+// lifecycle sounds `fx:<kind>:on` / `fx:<kind>:off` played by the effect tracker. v2 weapon,
+// world/loot and match-flow recipes live in their own files and are merged in here.
 
 import { POWER_CASTS, ULT_CASTS } from "./casts";
+import { MATCH_RECIPES } from "./matchRecipes";
+import { WEAPON_RECIPES } from "./weaponRecipes";
+import { WORLD_RECIPES } from "./worldRecipes";
 import { bell, chord, midi, noise, tick, tone, type Recipe } from "./synth";
 
 export { noise, tone, type Recipe, type Voice } from "./synth";
@@ -300,4 +304,4 @@ const CASTS: Record<string, Recipe> = {};
 for (const [id, r] of Object.entries(POWER_CASTS)) CASTS[`cast:${id}`] = r;
 for (const [id, r] of Object.entries(ULT_CASTS)) CASTS[`cast:${id}`] = r;
 
-export const RECIPES: Record<string, Recipe> = { ...CORE, ...EFFECT_LIFECYCLE, ...CASTS };
+export const RECIPES: Record<string, Recipe> = { ...CORE, ...EFFECT_LIFECYCLE, ...CASTS, ...WEAPON_RECIPES, ...WORLD_RECIPES, ...MATCH_RECIPES };
