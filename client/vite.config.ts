@@ -6,6 +6,8 @@ const serverPort = Number(process.env.PORT ?? 8787);
 const clientPort = Number(process.env.CLIENT_PORT ?? 5173);
 
 export default defineConfig({
+  // GitHub Pages serves the client under /prism-clash/ (see .github/workflows/pages.yml).
+  base: process.env.VITE_BASE ?? "/",
   resolve: { alias: { "@prism/shared": fileURLToPath(new URL("../shared/src/index.ts", import.meta.url)) } },
   server: {
     port: clientPort,
