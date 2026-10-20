@@ -48,8 +48,9 @@ describe("room", () => {
     expect(new Room("FGHIJ", 1, false, { loop: false }).settings.fillBots).toBe(false);
     const r = mkRoom(false);
     const ms = ["Ann", "Bea", "Cal", "Dee"].map((n, i) => r.addHuman(i + 1, n, `t${i}`, fakeWs().ws, "ip")!);
-    for (const m of ms.slice(1)) r.handle(m, { type: C2S.lobbySet, ready: true });
-    r.handle(ms[0], { type: C2S.start });
+    const [host, ...rest] = ms;
+    for (const m of rest) r.handle(m, { type: C2S.lobbySet, ready: true });
+    r.handle(host!, { type: C2S.start });
     expect(r.phase).toBe("ultSelect");
     expect(r.members.size).toBe(4);
     expect([...r.members.values()].some((m) => m.bot)).toBe(false);
