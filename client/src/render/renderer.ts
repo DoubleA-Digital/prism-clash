@@ -5,15 +5,17 @@
 
 import {
   canSeePoint, hasStatusBit, ITEMS, PF, PFLAG, PLAYER, PROJ, roofAt, ACT, isThrowableId,
-  type GameEvent, type MapDef, type NetEffect, type NetLoot, type NetPlayer, type NetProjectile, type Player,
+  type GameEvent, type HeroId, type MapDef, type NetEffect, type NetLoot, type NetPlayer, type NetProjectile, type Player,
 } from "@prism/shared";
 import type { Fx } from "../fx/fx";
 import type { PredictedShot, View } from "../net/netview";
 import { Background } from "./background";
 import type { Camera } from "./camera";
+import { idleAnim, type ChibiAnim } from "./chibi";
 import { Floor } from "./floor";
 import { drawGlow, rainbow, withAlpha } from "./glow";
 import { drawHero } from "./hero";
+import { HeroAnimator } from "./heroAnim";
 import { drawLoot, drawLootLabel } from "./items";
 import { colorHex, PAL } from "./palette";
 import { drawEffect, drawProjectileCustom, FLOOR_EFFECTS, TOP_EFFECTS } from "./powers";
@@ -31,6 +33,7 @@ export interface FrameInput {
   myColor: number;
   names: (id: number) => string;
   colors: (id: number) => number;
+  heroes: (id: number) => HeroId;
   time: number;
   dt: number;
   colorblind: boolean;
@@ -60,8 +63,9 @@ export class Renderer {
   private map: MapDef | null = null;
   private trails = new Map<number, Trail>();
   private frame = 0;
-  private shotAt = new Map<number, number>();
-  private hitAt = new Map<number, number>();
+  readonly anim = new HeroAnimator();
+  /** Animation each visible fighter was drawn with this frame (clones copy it). */
+  private drawnAnim = new Map<number, ChibiAnim>();
 
   constructor(private canvas: HTMLCanvasElement, private ctx: CanvasRenderingContext2D, public cam: Camera, public fx: Fx) {}
 
@@ -70,12 +74,12 @@ export class Renderer {
     this.floor = new Floor(map);
     this.terrain = new Terrain(map);
     this.trails.clear();
+    this.anim.reset(performance.now());
   }
 
-  /** Animation cues from game events (recoil, hit flash). */
+  /** Animation cues from game events (recoil, hits, slashes, throws, heals, deaths). */
   onEvent(e: GameEvent, now: number) {
-    if (e.t === "shoot" || e.t === "slash") this.shotAt.set(e.by, now);
-    if (e.t === "hit" && e.amount > 0) this.hitAt.set(e.target, now);
+    this.anim.onEvent(e, now);
   }
 
   private trail(id: number, x: number, y: number, max: number): number[] {
@@ -144,6 +148,8 @@ export class Renderer {
         return p && id === f.myId && f.me && mePos ? { ...p, x: mePos.x, y: mePos.y, aim: f.me.aim } : p;
       },
       playerName: f.names,
+      hero: f.heroes,
+      animOf: (id) => this.drawnAnim.get(id),
       pos: (id) => (id === f.myId && mePos ? mePos : view?.players.find((p) => p.id === id)),
       seeCloaked: f.seeCloaked,
       canSee: (x, y) => !f.viewer || canSeePoint(map, f.viewer.x, f.viewer.y, x, y, PLAYER.radius * 0.8),
@@ -333,40 +339,59 @@ export class Renderer {
   private drawPlayers(rc: RenderCtx, list: readonly NetPlayer[], f: FrameInput, mePos: { x: number; y: number } | null) {
     const now = performance.now();
     const map = this.map;
-    for (const p of list) {
-      if (!(p.flags & PFLAG.alive)) continue;
+    const anim = this.anim;
+    this.drawnAnim.clear();
+    const sees = (x: number, y: number) => !f.viewer || !map || canSeePoint(map, f.viewer.x, f.viewer.y, x, y, PLAYER.radius * 0.8);
+    // Draw back to front so a hero lower on screen overlaps the one behind it.
+    const order = list.filter((p) => (p.flags & PFLAG.alive) !== 0 && !anim.isDying(p.id)).map((p) => {
+      const me = p.id === f.myId ? f.me : null;
+      return { p, me, x: me && mePos ? mePos.x : p.x, y: me && mePos ? mePos.y : p.y };
+    });
+    order.sort((a, b) => a.y - b.y);
+    for (const { p, me, x, y } of order) {
       const isMe = p.id === f.myId;
-      const me = isMe ? f.me : null;
-      const x = me && mePos ? mePos.x : p.x;
-      const y = me && mePos ? mePos.y : p.y;
       // Precise client-side sight check (the server sends a little extra so nothing pops).
-      if (!isMe && f.viewer && map && !canSeePoint(map, f.viewer.x, f.viewer.y, x, y, PLAYER.radius * 0.8)) continue;
+      if (!isMe && !sees(x, y)) continue;
       const cloaked = hasStatusBit(p.status, "cloaked");
-      const alpha = cloaked ? (isMe ? 0.45 : f.seeCloaked ? 0.6 : 0.07) : 1;
+      const cloak = cloaked ? (isMe ? 0.6 : f.seeCloaked ? 0.5 : 1) : 0;
       const col = colorHex(p.color);
       const dashing = (p.flags & PFLAG.dashing) !== 0 || (me ? me.dashT > 0 : false);
       if (dashing) {
         const pts = this.trail(p.id, x, y, 12);
-        this.drawTrail(pts, col, 26, 0.6 * alpha);
-        if (Math.random() < 0.8) this.fx.particles.spawn(x, y, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, 0.35, 10, col);
+        this.drawTrail(pts, col, 22, 0.45 * (1 - cloak * 0.9));
+        if (Math.random() < 0.6) this.fx.particles.spawn(x, y + 10, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, 0.35, 8, col);
       }
       if (cloaked && !isMe && Math.random() < 0.15) this.fx.particles.spawn(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30, 0, -20, 0.5, 4, "#ffffff");
       const weapon = me ? me.inv.weapons[me.inv.active]?.id ?? null : p.weapon;
       const rarity = me ? me.inv.weapons[me.inv.active]?.rarity ?? 0 : p.rarity;
-      const act = me ? (me.reloadT > 0 ? ACT.reloading : 0) | (me.healKind ? ACT.healing : 0) | (me.swingT > 0 ? ACT.swinging : 0) : p.act;
+      const aim = me ? me.aim : p.aim;
+      const a = me
+        ? anim.self(p.id, me, x, y, cloak, now)
+        : anim.remote(p.id, x, y, aim, weapon, rarity, {
+          vx: p.vx, vy: p.vy, reloading: (p.act & ACT.reloading) !== 0, healing: (p.act & ACT.healing) !== 0, dashing, charge: p.charge, cloak,
+        }, now);
+      this.drawnAnim.set(p.id, a);
       drawHero(rc.ctx, {
-        id: p.id, x, y, aim: me ? me.aim : p.aim, color: col, colorIndex: p.color, name: f.names(p.id), hp: me ? Math.max(0, me.hp) : p.hp,
-        armor: me ? me.armor : p.armor, weapon, rarity, isMe, alpha, ultReady: (p.flags & PFLAG.ultReady) !== 0, bountied: hasStatusBit(p.status, "bountied"),
+        id: p.id, heroId: f.heroes(p.id), x, y, aim, color: col, colorIndex: p.color, name: f.names(p.id), hp: me ? Math.max(0, me.hp) : p.hp,
+        armor: me ? me.armor : p.armor, weapon, rarity, isMe, alpha: 1, ultReady: (p.flags & PFLAG.ultReady) !== 0, bountied: hasStatusBit(p.status, "bountied"),
         invulnerable: hasStatusBit(p.status, "invulnerable") && !dashing, slowed: hasStatusBit(p.status, "slowed") || hasStatusBit(p.status, "timeBubble") || hasStatusBit(p.status, "shocked"),
         disconnected: (p.flags & PFLAG.connected) === 0, colorblind: f.colorblind, invScale: rc.invScale, showBar: !isMe, time: f.time,
-        anim: {
-          speed: Math.hypot(p.vx, p.vy), dashing, reloading: (act & ACT.reloading) !== 0, healing: (act & ACT.healing) !== 0, charge: me ? me.charge : p.charge,
-          swinging: (act & ACT.swinging) !== 0, sinceShot: (now - (this.shotAt.get(p.id) ?? -1e9)) / 1000, sinceHit: (now - (this.hitAt.get(p.id) ?? -1e9)) / 1000,
-          airborne: hasStatusBit(p.status, "airborne") ? 1 : 0,
-        },
+        anim: a, airborne: hasStatusBit(p.status, "airborne") ? 1 : 0,
       });
       if (hasStatusBit(p.status, "overdrive")) this.drawOverdrive(x, y);
     }
+    // Eliminated fighters pop into neon shards where they fell.
+    for (const c of anim.dying(now)) {
+      if (c.id !== f.myId && !sees(c.x, c.y)) continue;
+      const pl = list.find((q) => q.id === c.id);
+      const a = { ...idleAnim(), deathT: anim.deathT(c, now) };
+      drawHero(rc.ctx, {
+        id: c.id, heroId: f.heroes(c.id), x: c.x, y: c.y, aim: c.aim, color: colorHex(f.colors(c.id)), colorIndex: pl?.color ?? f.colors(c.id), name: f.names(c.id),
+        hp: 0, armor: 0, weapon: c.weapon, rarity: c.rarity, isMe: c.id === f.myId, alpha: 1, ultReady: false, bountied: false, invulnerable: false, slowed: false,
+        disconnected: false, colorblind: false, invScale: rc.invScale, showBar: false, label: false, time: f.time, anim: a, airborne: 0,
+      });
+    }
+    if (this.frame % 60 === 0) anim.sweep(now);
   }
 
   private drawOverdrive(x: number, y: number) {

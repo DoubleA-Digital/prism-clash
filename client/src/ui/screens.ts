@@ -246,7 +246,7 @@ export class Screens {
         this.spectate = spectateBar();
         this.root.append(this.spectate.el);
       }
-      this.spectate.set(g.spectatingName(), g.hauntCooldown(), keyLabel(g.input.binds.p1), keyLabel(g.input.binds.p2));
+      this.spectate.set(g.spectating(), g.hauntCooldown(), keyLabel(g.input.binds.p1), keyLabel(g.input.binds.p2));
     } else if (this.spectate) {
       this.spectate.el.remove();
       this.spectate = null;

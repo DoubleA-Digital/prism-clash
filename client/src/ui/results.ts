@@ -3,15 +3,15 @@
 // Moment. Also the Tab scoreboard during the match.
 
 import { PLAYER_COLORS } from "@prism/shared";
-import { audio } from "../audio/audio";
 import { session } from "../net/session";
-import { coreCanvas } from "./coreView";
 import { h, raw } from "./dom";
 import { confetti, ordinal, rem } from "./fx";
+import { portraitCanvas } from "./heroPortrait";
 import { history } from "./history";
 import type { Built } from "./types";
 
 const colorOf = (id: number) => PLAYER_COLORS[session.playerColor(id)]?.hex ?? "#fff";
+const portrait = (id: number, size: number, cls?: string) => portraitCanvas(session.playerHero(id), colorOf(id), Math.round(size), cls);
 const CROWN = `<svg viewBox="0 0 32 24"><path d="M2 20 0 5l8 7 8-11 8 11 8-7-2 15z" fill="#ffc83d" stroke="#fff3c4" stroke-width="1.6" stroke-linejoin="round"/><rect x="3" y="20" width="26" height="3" rx="1.4" fill="#ff9f1c"/></svg>`;
 const crown = (extra = "") => raw("div", `crown${extra}`, CROWN);
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -24,7 +24,7 @@ export function matchEndScreen(root: HTMLElement): Built {
   const winCol = colorOf(m.winnerId);
   const top3 = stats.slice(0, 3);
   const podiumOrder = [top3[1], top3[0], top3[2]].filter((p): p is NonNullable<typeof p> => !!p);
-  const sizes = [rem(6.2), rem(4.6), rem(4.2)];
+  const sizes = [rem(8.4), rem(6.4), rem(5.8)];
   const heights = [rem(11), rem(8), rem(6)];
   const chaos = m.chaosMoment;
   const mine = stats.find((s) => s.playerId === session.myId);
@@ -38,7 +38,7 @@ export function matchEndScreen(root: HTMLElement): Built {
       return h(
         "div.step",
         { style: { "--c": colorOf(s.playerId), animationDelay: `${delay}s` } },
-        h("div.corewrap", null, rank === 1 ? crown() : null, coreCanvas(session.playerColor(s.playerId), sizes[rank - 1] ?? rem(4), { ultReady: rank === 1 })),
+        h("div.corewrap", null, rank === 1 ? crown() : null, portrait(s.playerId, sizes[rank - 1] ?? rem(5.6), "hero-podium")),
         h("div.who", null, session.playerName(s.playerId)),
         h("div.block", { style: { height: `${heights[rank - 1] ?? rem(5)}px`, animationDelay: `${delay}s` } }, h("div.rank", null, ordinal(s.place)), h("div.pt", null, `${s.kills} kill${s.kills === 1 ? "" : "s"}`)),
       );
@@ -63,7 +63,7 @@ export function matchEndScreen(root: HTMLElement): Built {
       h(
         `tr${i === 0 ? ".first" : ""}${s.playerId === session.myId ? ".me" : ""}`,
         { style: { "--c": colorOf(s.playerId) } },
-        h("td.n", { style: { color: colorOf(s.playerId) } }, h("div.in", null, coreCanvas(session.playerColor(s.playerId), rem(1.5)), session.playerName(s.playerId), roomPlayer(s.playerId)?.bot ? h("span.tag.bot", null, "BOT") : null)),
+        h("td.n", { style: { color: colorOf(s.playerId) } }, h("div.in", null, portrait(s.playerId, rem(1.9), "hero-mini sm"), session.playerName(s.playerId), roomPlayer(s.playerId)?.bot ? h("span.tag.bot", null, "BOT") : null)),
         cols.map((c, ci) => {
           const v = c.v(s);
           return h(`td${(c.low ? v === best[ci] : v > 0 && v === best[ci]) ? ".best" : ""}`, null, c.f ? c.f(v) : String(v));
@@ -94,10 +94,8 @@ export function matchEndScreen(root: HTMLElement): Built {
       h("div.end-actions", null, h("button.btn.primary", { onclick: () => session.rematch(), "data-nav": "1" }, "Rematch"), h("button.btn", { onclick: () => session.leave(), "data-nav": "1" }, "Main menu")),
     ),
   );
-  queueMicrotask(() => {
-    audio.sfx("combo", 0, 0, { positional: false, pitch: 0.75 });
-    confetti(winCol, root);
-  });
+  // (The placement stinger plays from the game loop as the results arrive.)
+  queueMicrotask(() => confetti(winCol, root));
   return { el: screen };
 }
 
@@ -120,7 +118,7 @@ export function scoreboard(): { el: HTMLElement; refresh: () => void } {
         `tr${p.id === session.myId ? ".me" : ""}${isAlive ? "" : ".dead"}`,
         { style: { color: colorOf(p.id) } },
         h("td", null, String(i + 1)),
-        h("td.nm", null, h("div.in", null, coreCanvas(p.color, rem(1.7)), h("span", null, p.name), p.bot ? h("span.tag.bot", null, "BOT") : null)),
+        h("td.nm", null, h("div.in", null, portrait(p.id, rem(2), "hero-mini sm"), h("span", null, p.name), p.bot ? h("span.tag.bot", null, "BOT") : null)),
         h("td", null, String(history.kills(p.id))),
         h("td", null, h(`span.${isAlive ? "alive" : "ghost"}`, null, isAlive ? "ALIVE" : out ? `OUT #${players.length - out + 1}` : "OUT")),
       );

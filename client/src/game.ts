@@ -2,13 +2,20 @@
 // Hit-stop freezes only the visual clock (snapshots keep arriving and the view catches up);
 // it never touches the server simulation.
 
-import { BTN, FX, GHOST, hasStatusBit, LOOT, magSize, mapName, NET, PFLAG, PLAYER, SOLID_ID_BASE, weaponRange, WEAPONS, type NetLoot, type NetPlayer, type Player } from "@prism/shared";
+import {
+  ACT, BTN, FX, GHOST, hasStatusBit, inBush, inWater, LOOT, magSize, mapName, NET, PFLAG, PLAYER, SOLID_ID_BASE, weaponRange, WEAPONS,
+  type HeroId, type NetGlobal, type NetLoot, type NetPlayer, type NetProjectile, type Player,
+} from "@prism/shared";
 import { audio } from "./audio/audio";
-import { handleEvent, shotSound, type EventContext, type KillFeedItem } from "./fx/events";
+import {
+  dryFire, lanceCharge, placementSting, resetGameAudio, stopHeal, trackFootsteps, trackProjectiles, updateMatchAudio, weaponShot, weaponSwap, type Mover, type Surface,
+} from "./audio/gameAudio";
+import { handleEvent, type EventContext, type KillFeedItem } from "./fx/events";
 import { Fx } from "./fx/fx";
 import { capLabel, Input } from "./input/input";
 import { session } from "./net/session";
 import { Camera } from "./render/camera";
+import { warmChibiCache } from "./render/chibi";
 import { MenuScene } from "./render/menuScene";
 import { colorHex } from "./render/palette";
 import { Renderer } from "./render/renderer";
@@ -39,6 +46,14 @@ export class Game {
   /** Who a dead player watches (their killer at first). */
   private spectateId = 0;
   private hauntReadyAt = 0;
+  /** Last interpolated view (sound helpers look fighters up in it). */
+  private lastView: { players: readonly NetPlayer[] } | null = null;
+  /** (hero, color) pairs still to pre-render while the countdown runs. */
+  private warmQueue: { hero: HeroId; color: string }[] = [];
+  private prevSlot = -1;
+  private wasHealing = false;
+  private healing = new Set<number>();
+  private stungFor: unknown = null;
   fps = 60;
   frameMs = 16;
   debugHitboxes = false;
@@ -61,6 +76,11 @@ export class Game {
       onEliminated: (killer) => {
         this.spectateId = killer;
       },
+      rarityOf: (id) => this.fighter(id)?.rarity ?? 0,
+      posOf: (id) => {
+        const p = this.fighter(id);
+        return p ? { x: p.x, y: p.y } : null;
+      },
     };
     session.onGameEvent((e, imm) => {
       handleEvent(this.ec, e, imm);
@@ -72,6 +92,10 @@ export class Game {
     this.resize();
     canvas.addEventListener("mousedown", (e) => this.ghostClick(e));
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  private fighter(id: number): NetPlayer | undefined {
+    return this.lastView?.players.find((p) => p.id === id);
   }
 
   resize() {
@@ -113,6 +137,12 @@ export class Game {
     const inMatch = view && (phase === "countdown" || phase === "round");
     this.music(phase);
     if (!inMatch || !view) {
+      if (this.mapKey) {
+        // Left the match (results, lobby or menu): stop loops and trackers.
+        this.mapKey = "";
+        this.lastView = null;
+        resetGameAudio();
+      }
       this.wasRound = false;
       this.menuScene.draw(this.ctx, this.canvas.width, this.canvas.height, this.cam.dpr, this.time, dt);
       return;
@@ -127,9 +157,19 @@ export class Game {
       this.hud.reset();
       this.killFeed.length = 0;
       this.spectateId = 0;
+      this.prevSlot = -1;
+      this.wasHealing = false;
+      this.healing.clear();
       this.visualTick = view.renderTick(now);
+      resetGameAudio();
+      // Pre-render each fighter's chibi sprites (hit-flash white rim included) over the
+      // countdown, one per frame, so the drop-in never hitches.
+      this.warmQueue = (session.room?.players ?? []).map((p) => ({ hero: p.hero, color: colorHex(p.color) }));
       if (view.me) this.cam.follow(view.me.x, view.me.y, 0, true);
     }
+
+    const warm = this.warmQueue.shift();
+    if (warm) warmChibiCache([warm.hero], [warm.color, "#ffffff"]);
 
     // Countdown numbers
     if (phase === "countdown") {
@@ -163,6 +203,7 @@ export class Game {
       scoped = !!gun && gun.id === "sniper" && (b.held & BTN.scope) !== 0;
       const out = view.predict(mv.x, mv.y, aim, b.held, b.pressed, dt);
       session.sendInput(out.frame);
+      this.handsAudio(me, b.pressed);
       if (out.shots > 0 && gun) {
         this.reticle.onShoot();
         const c = colorHex(session.playerColor(session.myId));
@@ -170,7 +211,7 @@ export class Game {
         const my = me.y + Math.sin(aim) * PLAYER.muzzle;
         this.fx.particles.cone(mx, my, gun.id === "shotgun" ? 8 : 4, aim, 0.6, c, 380, 0.18, 3);
         this.renderer.onEvent({ t: "shoot", by: session.myId, x: mx, y: my, angle: aim, weapon: gun.id }, now);
-        shotSound(gun.id, me.x, me.y, true);
+        weaponShot(gun.id, me.x, me.y, { own: true, rarity: gun.rarity });
         this.cam.addTrauma(Math.min(0.12, WEAPONS[gun.id].recoil * 0.006));
       }
     } else if (phase === "round") {
@@ -196,6 +237,7 @@ export class Game {
     view.drainEvents(this.visualTick);
 
     const v = view.viewAt(this.visualTick, view.estServerTick(now));
+    this.lastView = v;
     this.fx.update(fxDt);
     this.renderer.floor?.update(fxDt);
 
@@ -222,12 +264,13 @@ export class Game {
     this.cam.update(fxDt || dt * 0.2, this.time);
     audio.setListener(this.cam.x, this.cam.y);
     audio.matchFrame(v ?? null, this.cam, phase, me ? me.hp : null);
+    if (v) this.worldAudio(v.players, v.projectiles, v.g, me ? { x: meX, y: meY } : null);
 
     const interact = me && v ? this.interactTarget(me, v.loot) : null;
     const selfBits = view.self?.status ?? 0;
     this.renderer.render({
       view: v, me, meOff: { x: view.offX, y: view.offY }, shots: view.shots, myId: session.myId,
-      myColor: session.playerColor(session.myId), names: (id) => session.playerName(id), colors: (id) => session.playerColor(id),
+      myColor: session.playerColor(session.myId), names: (id) => session.playerName(id), colors: (id) => session.playerColor(id), heroes: (id) => session.playerHero(id),
       time: this.time, dt: fxDt, colorblind: settings.colorblind, intensity: this.intensity(), seeCloaked: hasStatusBit(selfBits, "hunter"),
       debugHitboxes: this.debugHitboxes, viewer, interact, interactKey: capLabel(this.input.binds.interact),
     });
@@ -254,6 +297,41 @@ export class Game {
       range: weaponRange(gun?.id ?? "pistol"), spread: def.kind === "shotgun" ? def.spread : def.spread + (me?.bloom ?? 0), charge: me?.charge ?? 0,
       color: colorHex(session.playerColor(session.myId)), dt, visible: showReticle,
     });
+  }
+
+  /** Local hands sounds that have no server event: dry fire, weapon swap, lance hum, heal cancel. */
+  private handsAudio(me: Player, pressed: number) {
+    const gun = me.inv.weapons[me.inv.active] ?? null;
+    if (gun && (pressed & BTN.shoot) && gun.mag <= 0 && me.reloadT <= 0 && WEAPONS[gun.id].kind !== "blade") dryFire(gun.id);
+    if (this.prevSlot >= 0 && me.inv.active !== this.prevSlot && gun) weaponSwap(gun.id, gun.rarity);
+    this.prevSlot = me.inv.active;
+    if (gun?.id === "lance" && me.charge > 0) lanceCharge(session.myId, me.charge);
+    if (this.wasHealing && !me.healKind) stopHeal(session.myId);
+    this.wasHealing = !!me.healKind;
+  }
+
+  /** Per-frame world sounds: footsteps by surface, grenade bounces, others' lance hum and heal
+   *  cancels, and the music director / zone drone. */
+  private worldAudio(players: readonly NetPlayer[], projectiles: readonly NetProjectile[], g: NetGlobal, mePos: { x: number; y: number } | null) {
+    const map = session.view?.map;
+    if (!map) return;
+    const movers: Mover[] = [];
+    const healingNow = new Set<number>();
+    for (const p of players) {
+      if (!(p.flags & PFLAG.alive)) continue;
+      const own = p.id === session.myId;
+      movers.push(own && mePos ? { id: p.id, x: mePos.x, y: mePos.y } : { id: p.id, x: p.x, y: p.y });
+      if (own) continue;
+      if (p.act & ACT.charging && p.weapon === "lance") lanceCharge(p.id, p.charge, p.x, p.y);
+      if (p.act & ACT.healing) healingNow.add(p.id);
+    }
+    for (const id of this.healing) if (!healingNow.has(id)) stopHeal(id);
+    this.healing = healingNow;
+    const surfaceAt = (x: number, y: number): Surface => (inWater(map, x, y) ? "water" : inBush(map, x, y) ? "bush" : "floor");
+    if (session.phase === "round") trackFootsteps(movers, surfaceAt, session.myId);
+    trackProjectiles(projectiles);
+    const outside = mePos !== null && Math.hypot(mePos.x - g.zx, mePos.y - g.zy) > g.zr;
+    updateMatchAudio({ g, fighters: session.playerCount, outside });
   }
 
   /** The item F would pick up: nearest weapon (or a different grenade type) in reach. */
@@ -319,8 +397,12 @@ export class Game {
     return Math.max(0, (this.hauntReadyAt - performance.now()) / 1000);
   }
 
-  spectatingName(): string {
-    return this.spectateId ? session.playerName(this.spectateId) : "";
+  /** Who the camera follows while you're out (name, hero and color for the spectate bar). */
+  spectating(): { name: string; hero: HeroId; color: string } | null {
+    const alive = session.view?.alive ?? [];
+    const id = alive.includes(this.spectateId) ? this.spectateId : alive.find((a) => a !== session.myId) ?? 0;
+    if (!id) return null;
+    return { name: session.playerName(id), hero: session.playerHero(id), color: colorHex(session.playerColor(id)) };
   }
 
   private intensity(): number {
@@ -333,17 +415,22 @@ export class Game {
 
   private music(phase: string) {
     if (phase === "round" || phase === "countdown") {
+      // Intensity and the final-duel layer come from updateMatchAudio each frame.
       audio.startMusic(0.34, "game");
-      audio.music?.setIntensity(this.intensity());
     } else if (phase === "menu" || phase === "lobby") {
       audio.startMusic(0.18, "menu");
     } else {
       audio.startMusic(0.24, "game");
       audio.music?.setIntensity(0.2);
     }
-    if (phase !== this.lastPhase) {
-      if (phase === "matchEnd") audio.sting(session.matchEnd?.winnerId === session.myId ? "win" : "lose");
-      this.lastPhase = phase;
+    if (phase !== this.lastPhase) this.lastPhase = phase;
+    // Results: your placement stinger, once per match (the winner already heard the victory
+    // fanfare on the win event).
+    const end = session.matchEnd;
+    if (phase === "matchEnd" && end && this.stungFor !== end) {
+      this.stungFor = end;
+      const place = end.stats.find((st) => st.playerId === session.myId)?.place ?? 0;
+      if (place > 1) placementSting(place);
     }
   }
 }

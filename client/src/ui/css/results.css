@@ -72,3 +72,5 @@
 .matchend .table-wrap { max-height: 46vh; overflow-y: auto; border-radius: 1rem; }
 .stats tr.me td { background: rgba(255, 255, 255, 0.07); }
 .stats tr.me td.n { box-shadow: inset 3px 0 0 #fff; }
+.podium .hero-podium { display: block; filter: drop-shadow(0 0 1.2rem color-mix(in srgb, var(--c) 45%, transparent)); }
+.hero-mini.sm { flex: none; border-radius: 0.6rem; background: radial-gradient(circle at 50% 62%, color-mix(in srgb, currentColor 22%, transparent), transparent 70%); }

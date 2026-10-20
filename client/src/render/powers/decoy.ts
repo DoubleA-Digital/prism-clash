@@ -29,7 +29,7 @@ export function drawDecoy(rc: RenderCtx, e: NetEffect) {
   ctx.translate(e.x + jx, e.y);
   ctx.scale(s, s);
   drawLookalike(rc, e.owner, {
-    x: 0, y: 0, aim: Math.atan2(e.vy, e.vx) || e.angle, alpha, speed: Math.hypot(e.vx, e.vy), showBar: e.owner !== rc.myId, invScale: rc.invScale / s,
+    x: 0, y: 0, aim: Math.atan2(e.vy, e.vx) || e.angle, alpha, speed: Math.hypot(e.vx, e.vy), showBar: e.owner !== rc.myId, invScale: rc.invScale / s, seed: e.id,
   });
   ctx.restore();
 
