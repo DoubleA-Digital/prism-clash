@@ -513,7 +513,7 @@ export const BOTS = {
   earlyAppetite: 0.03,
   /** Score bonus that keeps the current state (stops flip-flopping). */
   stickiness: 0.12,
-  names: ["NOVA", "VEX", "ORBIT", "KILO", "ZEPHYR", "QUASAR", "HALO", "RIFT", "ECHO", "PULSE", "ION", "AXIOM", "JINX", "TALON"],
+  names: ["COMET", "BOLT", "ORBIT", "KILO", "ZEPHYR", "QUASAR", "HALO", "RIFT", "ECHO", "PULSE", "ION", "AXIOM", "JINX", "TALON"],
 } as const;
 
 export const FX = {
