@@ -1,19 +1,24 @@
-// MIRROR SELF: a perfect copy of you (same core, name and health bar) that moves opposite to
-// you and fires real 40%-damage shots at your aim point whenever you shoot. It absorbs a few
-// hits before shattering. Recast to swap places with it.
+// MIRROR SELF: a perfect copy of you (same look, name and health bar) that moves opposite to
+// you and copies whatever you fire, at reduced damage, toward your aim point: one bullet, a
+// shotgun's pellets, a rocket, a Prism Lance beam or an Energy Blade swing. It absorbs a few
+// hits before shattering. It walks into walls like a player (never through them). Recast to
+// swap places with it.
 
-import { PLAYER, POWERS, WEAPONS } from "../config";
-import { dist2 } from "../math/vec";
-import { activeWeapon, weaponDamage } from "../sim/actions";
+import { POWERS, WEAPONS } from "../config";
+import { dist2, pointSegment } from "../math/vec";
+import { activeWeapon, volleyAngles, weaponDamage } from "../sim/actions";
+import { solidsInCircle, sweepSolids } from "../sim/collision";
 import { definePower } from "../sim/hooks";
-import type { Effect, Player, PowerSlot } from "../sim/types";
+import { bulletBlocked } from "../sim/los";
+import type { Effect, Player, PowerSlot, WeaponId } from "../sim/types";
 import { PF, PROJ } from "../sim/types";
+import { muzzle } from "../sim/weapons";
 import type { World } from "../sim/world";
+import { moveBody, walkTo } from "./geometry";
 import { circle, glow, poly } from "./icon";
 
 const C = POWERS.mirrorSelf;
 const COLOR = "#D7E1FF";
-const SIDE_OFFSET = 70;
 
 /**
  * clone: x/y its position, angle its aim, v its remaining hp, n how many swaps happened (the
@@ -37,6 +42,85 @@ function inForeignBubble(w: World, x: number, y: number, owner: number): boolean
   return false;
 }
 
+/** The clone's copy of a Prism Lance shot: a beam from the clone along its aim, bouncing like the real one. */
+function cloneBeam(w: World, e: Effect, owner: Player, dmg: number) {
+  const def = WEAPONS.lance;
+  const hit = new Set<number>([owner.id]);
+  let x = e.x;
+  let y = e.y;
+  let dx = Math.cos(e.angle);
+  let dy = Math.sin(e.angle);
+  let left = def.beamRange;
+  for (let seg = 0; seg <= def.bounces && left > 20; seg++) {
+    const wall = sweepSolids(w.map, x, y, x + dx * left, y + dy * left, 0);
+    const t = wall ? wall.t : 1;
+    const hx = x + dx * left * t;
+    const hy = y + dy * left * t;
+    for (const o of w.players.values()) {
+      if (!o.alive || hit.has(o.id) || (o.status.airborne ?? 0) > 0) continue;
+      if (pointSegment(o.x, o.y, x, y, hx, hy).d > o.r + 10) continue;
+      hit.add(o.id);
+      w.damage(o, dmg, owner.id, "mirrorSelf", { x: o.x, y: o.y });
+    }
+    w.spawnEffect({ kind: "beam", owner: owner.id, source: "mirrorSelf", x, y, x2: hx, y2: hy, r: 8, life: 0.32, n: seg, v: 0.6 });
+    if (!wall) break;
+    w.damageSolid(wall.solid, dmg * 0.5, owner.id, false, hx, hy);
+    left -= Math.hypot(hx - x, hy - y);
+    const dot = dx * wall.nx + dy * wall.ny;
+    dx -= 2 * dot * wall.nx;
+    dy -= 2 * dot * wall.ny;
+    x = hx + wall.nx * 2;
+    y = hy + wall.ny * 2;
+  }
+}
+
+/** The clone's copy of an Energy Blade swing: the same arc around the clone (no lunge). */
+function cloneSlash(w: World, e: Effect, owner: Player, dmg: number) {
+  const def = WEAPONS.blade;
+  const half = (def.arc / 2) * (Math.PI / 180);
+  for (const o of w.players.values()) {
+    if (!o.alive || o.id === owner.id) continue;
+    const dx = o.x - e.x;
+    const dy = o.y - e.y;
+    const d = Math.hypot(dx, dy);
+    if (d > def.reach + o.r) continue;
+    let da = Math.atan2(dy, dx) - e.angle;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    if (Math.abs(da) > half && d > o.r + e.r) continue;
+    if (bulletBlocked(w.map, e.x, e.y, o.x, o.y)) continue;
+    w.damage(o, dmg, owner.id, "mirrorSelf", { x: o.x, y: o.y });
+    w.impulse(o, (dx / (d || 1)) * 260, (dy / (d || 1)) * 260);
+  }
+  const cx = e.x + Math.cos(e.angle) * def.reach * 0.6;
+  const cy = e.y + Math.sin(e.angle) * def.reach * 0.6;
+  for (const s of solidsInCircle(w.map, cx, cy, def.reach * 0.55)) w.damageSolid(s, dmg, owner.id, true, cx, cy);
+  w.spawnEffect({ kind: "slash", owner: owner.id, source: "mirrorSelf", x: e.x, y: e.y, angle: e.angle, r: def.reach, life: def.swingTime + 0.05 });
+}
+
+/** The clone fires a copy of the owner's gun in hand, at damageMult, from its own muzzle. */
+function cloneFire(w: World, e: Effect, owner: Player) {
+  const gun: { id: WeaponId; rarity: number } = activeWeapon(owner) ?? { id: "pistol", rarity: 0 };
+  const def = WEAPONS[gun.id];
+  const dmg = weaponDamage(gun) * C.damageMult;
+  if (def.kind === "lance") cloneBeam(w, e, owner, dmg);
+  else if (def.kind === "blade") cloneSlash(w, e, owner, dmg);
+  else {
+    const start = muzzle(w, e.x, e.y, e.angle);
+    const ricochet = (owner.status.ricochet ?? 0) > 0;
+    let flags = ricochet ? PF.ricochet : 0;
+    if ((owner.status.hunter ?? 0) > 0) flags |= PF.homing;
+    for (const a of volleyAngles(gun.id, e.angle, 0, () => w.rng.next() * 2 - 1)) {
+      w.spawnProjectile({
+        owner: owner.id, kind: def.kind === "rocket" ? PROJ.rocket : PROJ.clone, source: "mirrorSelf", weapon: gun.id, rarity: gun.rarity,
+        x: start.x, y: start.y, vx: Math.cos(a) * def.speed, vy: Math.sin(a) * def.speed, damage: dmg, life: def.life, r: def.radius,
+        pierce: def.pierce, flags, maxBounces: ricochet ? POWERS.ricochetPrism.maxBounces : 0,
+      });
+    }
+  }
+  w.emit({ t: "shoot", by: owner.id, x: e.x, y: e.y, angle: e.angle, weapon: gun.id });
+}
+
 function shatter(w: World, e: Effect) {
   e.dead = true;
   w.emit({ t: "explode", x: e.x, y: e.y, r: 70, source: "mirrorSelf", by: e.owner });
@@ -48,7 +132,7 @@ function shatter(w: World, e: Effect) {
 export const mirrorSelf = definePower({
   id: "mirrorSelf",
   name: "Mirror Self",
-  description: "Split off a clone that moves opposite to you and fires 40% shots at your aim. Enemies can't tell which is real. Recast to swap places.",
+  description: `Split off a clone that moves opposite to you and copies your gun at ${Math.round(C.damageMult * 100)}% damage, aimed where you aim. Enemies can't tell which is real. Recast to swap places.`,
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size) {
@@ -70,19 +154,13 @@ export const mirrorSelf = definePower({
   onCast(w, p, slot) {
     // Several clones can coexist (Echo Storm); the recast swaps with the oldest.
     // Split sideways from the aim so both cores are visible from the first frame.
+    // It walks out from you, so a wall beside you stops it instead of it appearing in the next
+    // room; whichever side has more room wins.
     const side = p.aim + Math.PI / 2;
-    let x = p.x + Math.cos(side) * SIDE_OFFSET;
-    let y = p.y + Math.sin(side) * SIDE_OFFSET;
-    if (!w.insideArena(x, y, C.radius)) {
-      x = p.x - Math.cos(side) * SIDE_OFFSET;
-      y = p.y - Math.sin(side) * SIDE_OFFSET;
-    }
-    const e = w.spawnEffect({ kind: "clone", owner: p.id, source: "mirrorSelf", x, y, x2: p.x, y2: p.y, r: C.radius, life: C.duration, angle: p.aim, v: C.hp });
-    // Settle it out of walls straight away.
-    const body = { x: e.x, y: e.y, vx: 0, vy: 0 };
-    w.collideBody(body, e.r);
-    e.x = body.x;
-    e.y = body.y;
+    const a = walkTo(w, p.x, p.y, p.x + Math.cos(side) * C.sideOffset, p.y + Math.sin(side) * C.sideOffset, C.radius);
+    const b = walkTo(w, p.x, p.y, p.x - Math.cos(side) * C.sideOffset, p.y - Math.sin(side) * C.sideOffset, C.radius);
+    const pick = dist2(a.x, a.y, p.x, p.y) >= dist2(b.x, b.y, p.x, p.y) - 1 ? a : b;
+    w.spawnEffect({ kind: "clone", owner: p.id, source: "mirrorSelf", x: pick.x, y: pick.y, x2: p.x, y2: p.y, r: C.radius, life: C.duration, angle: p.aim, v: C.hp });
     slot.recast = C.duration;
     return true;
   },
@@ -116,8 +194,8 @@ export const mirrorSelf = definePower({
           dy = 0;
         }
         const scale = (inForeignBubble(w, e.x, e.y, e.owner) ? POWERS.timeBubble.slow : 1) / ((p.status.timeBubble ?? 0) > 0 ? POWERS.timeBubble.slow : 1);
-        const body = { x: e.x - dx * scale, y: e.y - dy * scale, vx: -dx / dt, vy: -dy / dt };
-        w.collideBody(body, e.r);
+        const body = { x: e.x, y: e.y, vx: -dx / dt, vy: -dy / dt };
+        moveBody(w, body, -dx * scale, -dy * scale, e.r);
         e.vx = (body.x - e.x) / dt;
         e.vy = (body.y - e.y) / dt;
         e.x = body.x;
@@ -128,23 +206,13 @@ export const mirrorSelf = definePower({
         const ax = p.x + Math.cos(p.aim) * C.aimDistance;
         const ay = p.y + Math.sin(p.aim) * C.aimDistance;
         e.angle = Math.atan2(ay - e.y, ax - e.x);
-        // Fire when the owner fires (this tick), at most every fireCooldown.
+        // Fire when the owner fires (this tick), at most every max(fireCooldown, the gun's cooldown).
         e.hits ??= new Map();
         const next = e.hits.get(0) ?? 0;
         if (p.sinceShot === 0 && w.time >= next) {
-          e.hits.set(0, w.time + C.fireCooldown);
-          const cos = Math.cos(e.angle);
-          const sin = Math.sin(e.angle);
-          const ricochet = (p.status.ricochet ?? 0) > 0;
-          // The clone copies whatever gun the owner holds (at reduced damage).
-          const gun = activeWeapon(p) ?? { id: "pistol" as const, rarity: 0 };
-          const def = WEAPONS[gun.id];
-          const pr = w.spawnProjectile({
-            owner: p.id, kind: PROJ.clone, source: "mirrorSelf", x: e.x + cos * PLAYER.muzzle, y: e.y + sin * PLAYER.muzzle,
-            vx: cos * def.speed, vy: sin * def.speed, damage: weaponDamage(gun) * C.damageMult, life: def.life, r: def.radius,
-            flags: ricochet ? PF.ricochet : 0, maxBounces: ricochet ? POWERS.ricochetPrism.maxBounces : 0,
-          });
-          w.emit({ t: "shoot", by: p.id, x: pr.x, y: pr.y, angle: e.angle, weapon: gun.id });
+          const gun = activeWeapon(p);
+          e.hits.set(0, w.time + Math.max(C.fireCooldown, gun ? WEAPONS[gun.id].fireCd : 0));
+          cloneFire(w, e, p);
         }
       },
       onProjectileHit(w, e, pr) {

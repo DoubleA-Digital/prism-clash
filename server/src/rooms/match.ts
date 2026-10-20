@@ -2,7 +2,7 @@
 // draft, and the final placements and stats.
 
 import {
-  applyPick, draftOffer, MATCH, NET, pickSlot, placements, type PlayerMatchStats, type PowerId, type Rng, type World,
+  applyPick, draftOffer, equipPower, MATCH, NET, pickSlot, placements, type PlayerMatchStats, type PowerId, type Rng, type World,
 } from "@prism/shared";
 import type { BotBrain } from "../bots/brain";
 import type { Member } from "./member";
@@ -24,7 +24,7 @@ export function applyShard(w: World, m: Member, index: number) {
   const slot = pickSlot(m.loadout);
   m.loadout = applyPick(m.loadout, pick);
   const p = w.players.get(m.id);
-  if (p?.alive) p.slots[slot] = { id: pick, cd: 0, recast: 0 };
+  if (p?.alive) equipPower(w, p, slot, pick);
 }
 
 /** The power a shard pick would replace (for the overlay's hint), or null for an empty slot. */

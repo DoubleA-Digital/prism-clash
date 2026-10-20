@@ -1,12 +1,12 @@
-// Mirror Self visuals: the clone is drawn exactly like a real player (core, trail, name,
-// health bar from the owner's HP, aim chevron) so enemies can't tell them apart. Only the
+// Mirror Self visuals: the clone is drawn exactly like a real player (the same hero body with
+// the owner's gun in hand, name, health bar from the owner's HP) so enemies can't tell them
+// apart, and like a real player it's hidden when it's out of your line of sight. Only the
 // owner sees a faint mirror ring marking which one is the copy.
 
-import { hasStatusBit, PFLAG, PLAYER, PLAYER_COLORS, type NetEffect } from "@prism/shared";
+import { PFLAG, PLAYER, type NetEffect } from "@prism/shared";
 import { PSHAPE } from "../../fx/particles";
-import { settings } from "../../settings";
-import { drawCore } from "../core";
 import { withAlpha } from "../glow";
+import { drawLookalike } from "./lookalike";
 import type { RenderCtx } from "./types";
 import { anchor, changed, ownerAlpha } from "./util";
 
@@ -55,9 +55,9 @@ export function drawClone(rc: RenderCtx, e: NetEffect) {
   const { ctx, time } = rc;
   const owner = rc.player(e.owner);
   const col = rc.color(e.owner);
-  const colorIndex = owner?.color ?? Math.max(0, PLAYER_COLORS.findIndex((c) => c.hex === col));
   const mine = e.owner === rc.myId;
-  const st = owner?.status ?? 0;
+  // Same sight rule as real fighters: a clone behind a wall stays hidden (your own is always shown).
+  if (!mine && rc.canSee && !rc.canSee(e.x, e.y)) return;
   const dashing = owner ? (owner.flags & PFLAG.dashing) !== 0 : false;
   const alpha = ownerAlpha(rc, e.owner) * (mine ? 0.7 : 1);
 
@@ -78,13 +78,7 @@ export function drawClone(rc: RenderCtx, e: NetEffect) {
   if (dashing && Math.random() < 0.8) rc.fx.particles.spawn(e.x, e.y, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, 0.35, 10, col);
   if (alpha < 0.1 && Math.random() < 0.15) rc.fx.particles.spawn(e.x + (Math.random() - 0.5) * 30, e.y + (Math.random() - 0.5) * 30, 0, -20, 0.5, 4, "#ffffff");
 
-  drawCore(ctx, {
-    x: e.x, y: e.y, color: col, colorIndex, hp: owner?.hp ?? PLAYER.maxHp, aim: e.angle, time, name: rc.playerName(e.owner), isMe: false, alpha,
-    dashing, ultReady: owner ? (owner.flags & PFLAG.ultReady) !== 0 : false, bountied: hasStatusBit(st, "bountied"),
-    slowed: hasStatusBit(st, "slowed") || hasStatusBit(st, "timeBubble"), inverted: hasStatusBit(st, "inverted"),
-    airborne: hasStatusBit(st, "airborne") ? 1 : 0, invulnerable: hasStatusBit(st, "invulnerable") && !dashing,
-    disconnected: owner ? (owner.flags & PFLAG.connected) === 0 : false, colorblind: settings.colorblind, invScale: rc.invScale, showBar: true,
-  });
+  drawLookalike(rc, e.owner, { x: e.x, y: e.y, aim: e.angle, alpha, speed: Math.hypot(e.vx, e.vy), showBar: true });
 
   if (mine) {
     // Only you see which one is the reflection, and how long it has left.

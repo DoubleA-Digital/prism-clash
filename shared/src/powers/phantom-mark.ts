@@ -1,12 +1,16 @@
 // PHANTOM MARK: a fast untouchable dash along your aim. Every enemy the dash passes through
-// gets a sigil that detonates 1.5s later for 20, or double that if you land a basic shot on
-// them before it pops (world.hitPlayer flags the sigil when that happens).
+// gets a sigil that detonates 1.5s later for 20, multiplied by shotMult if you hit them with
+// any weapon before it pops (a bullet, a pellet, a rocket blast, a lance beam or a blade
+// swing: the sigil watches this tick's hit events for your weapon damage on its target).
+// Only enemies the dasher can see are marked (no marking through a wall the dash slid along).
 
 import { PLAYER, POWERS } from "../config";
 import { pointSegment } from "../math/vec";
 import { definePower } from "../sim/hooks";
 import type { Effect, Player } from "../sim/types";
+import { isWeaponId } from "../sim/types";
 import type { World } from "../sim/world";
+import { wallBetween } from "./geometry";
 import { glow, ngon, poly } from "./icon";
 
 const C = POWERS.phantomMark;
@@ -29,7 +33,7 @@ function sweep(w: World, e: Effect, p: Player) {
   for (const o of w.enemiesOf(p)) {
     if (e.hits.has(o.id)) continue;
     const hit = pointSegment(o.x, o.y, e.x, e.y, e.x2, e.y2);
-    if (hit.d <= o.r + p.r * 0.5 + C.markPad) {
+    if (hit.d <= o.r + p.r * 0.5 + C.markPad && !wallBetween(w, p.x, p.y, o.x, o.y)) {
       e.hits.set(o.id, w.time);
       mark(w, p, o);
     }
@@ -39,7 +43,7 @@ function sweep(w: World, e: Effect, p: Player) {
 export const phantomMark = definePower({
   id: "phantomMark",
   name: "Phantom Mark",
-  description: "Dash through enemies, untouchable. Each one you pass gets a sigil that explodes for 20 after 1.5s, doubled if you shoot them first.",
+  description: `Dash through enemies, untouchable. Each one you pass gets a sigil that explodes for ${C.damage} after ${C.fuse}s, ×${C.shotMult} if you hit them with any weapon first.`,
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {
@@ -96,6 +100,15 @@ export const phantomMark = definePower({
         }
         e.x = t.x;
         e.y = t.y;
+        // Charged by the caster's weapon damage on the target (any gun, lance, blade, rocket).
+        if (e.n === 0) {
+          for (const ev of w.events) {
+            if (ev.t === "hit" && ev.target === t.id && ev.by === e.owner && ev.amount > 0 && isWeaponId(ev.source)) {
+              e.n = 1;
+              break;
+            }
+          }
+        }
       },
       onExpire(w, e) {
         const t = w.players.get(e.link);

@@ -1,10 +1,12 @@
 // VOID CLOAK: fold into the void for 3s, a faint shimmer that's hidden from the minimap. Your
-// first shot out of cloak is a guaranteed crit; taking damage tears the cloak away.
-// (fireShot spends the crit; damage() breaks the cloak.)
+// first attack out of cloak (any gun's volley, a Prism Lance beam or an Energy Blade swing) is a
+// guaranteed crit; taking damage tears the cloak away.
+// (weapons.takeCloakCrit spends the crit; damage() breaks the cloak.)
 
 import { POWERS } from "../config";
 import { definePower } from "../sim/hooks";
 import type { Player } from "../sim/types";
+import { grantBuff } from "./geometry";
 import { arc, circle, glow } from "./icon";
 
 const C = POWERS.voidCloak;
@@ -20,7 +22,7 @@ const critUntil = new WeakMap<Player, number>();
 export const voidCloak = definePower({
   id: "voidCloak",
   name: "Void Cloak",
-  description: "Turn nearly invisible for 3s and vanish from the minimap. Your first shot out of cloak is a guaranteed crit. Taking damage breaks it.",
+  description: `Turn nearly invisible for ${C.duration}s and vanish from the minimap. Your first attack out of cloak, with any weapon, is a guaranteed crit. Taking damage breaks it.`,
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {
@@ -38,7 +40,7 @@ export const voidCloak = definePower({
     }
   },
   onCast(w, p) {
-    w.addStatus(p, "cloaked", C.duration);
+    grantBuff(w, p, "cloaked", C.duration);
     p.cloakCrit = true;
     wasCloaked.set(p, true);
     critUntil.delete(p);
@@ -58,6 +60,13 @@ export const voidCloak = definePower({
       p.cloakCrit = false;
       critUntil.delete(p);
     }
+  },
+  onUnequip(_w, p) {
+    // Swapped out by a Prism Shard: the grace-window crit goes with it (a cloak still running
+    // keeps its own crit, since being cloaked is what makes an attack crit).
+    p.cloakCrit = false;
+    critUntil.delete(p);
+    wasCloaked.delete(p);
   },
   effects: {
     voidBurst: {},

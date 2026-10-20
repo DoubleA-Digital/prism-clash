@@ -1,5 +1,7 @@
-// SINGULARITY: a slow orb that collapses into a black hole after 0.8s (or on contact),
-// dragging players and projectiles in for 2.5s, bending bullet paths, then detonating.
+// SINGULARITY: a slow orb that collapses into a black hole after 0.8s (or on contact with a
+// player or a wall), dragging players and projectiles in for 2.5s, bending bullet paths, then
+// detonating. The pull, the bending and the blast all stop at walls: nobody is dragged
+// against a wall from the far side of it, and the detonation doesn't reach around corners.
 
 import { POWERS } from "../config";
 import { dist2 } from "../math/vec";
@@ -7,6 +9,7 @@ import { definePower } from "../sim/hooks";
 import type { Effect } from "../sim/types";
 import { PROJ } from "../sim/types";
 import type { World } from "../sim/world";
+import { wallBetween } from "./geometry";
 import { arc, circle, glow } from "./icon";
 
 const C = POWERS.singularity;
@@ -18,7 +21,7 @@ function collapse(w: World, owner: number, x: number, y: number) {
 export const singularity = definePower({
   id: "singularity",
   name: "Singularity",
-  description: "Throw an orb that becomes a black hole, pulling players and shots in for 2.5s before detonating for 25.",
+  description: `Throw an orb that becomes a black hole, pulling players and shots in for ${C.duration}s before detonating for ${C.damage}. Walls block the pull.`,
   color: "#9B5CFF",
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {
@@ -50,24 +53,26 @@ export const singularity = definePower({
   },
   effects: {
     singularity: {
-      affectPlayer(_w, e: Effect, p) {
+      affectPlayer(w, e: Effect, p) {
         if ((p.status.airborne ?? 0) > 0) return;
         const dx = e.x - p.x;
         const dy = e.y - p.y;
         const d2 = dx * dx + dy * dy;
         if (d2 > e.r * e.r || d2 < 1) return;
+        if (wallBetween(w, e.x, e.y, p.x, p.y)) return;
         const d = Math.sqrt(d2);
         // Stronger near the core, gentler at the edge; the caster feels a weaker pull.
         const k = (1 - d / e.r) * (p.id === e.owner ? 0.45 : 1) * (1 / 30);
         p.px += (dx / d) * C.pull * k * 0.9;
         p.py += (dy / d) * C.pull * k * 0.9;
       },
-      affectProjectile(_w, e, pr, dt) {
+      affectProjectile(w, e, pr, dt) {
         if (pr.kind === PROJ.singularityOrb) return;
         const dx = e.x - pr.x;
         const dy = e.y - pr.y;
         const d2 = dx * dx + dy * dy;
         if (d2 > e.r * e.r || d2 < 1) return;
+        if (wallBetween(w, e.x, e.y, pr.x, pr.y)) return;
         const d = Math.sqrt(d2);
         const k = (1 - d / e.r) * C.projectilePull * dt;
         pr.vx += (dx / d) * k;
@@ -84,9 +89,11 @@ export const singularity = definePower({
       onExpire(w, e) {
         // v = 2 when a Shockwave Slam knocked an enemy into it (Gravity Slam combo).
         const mult = e.v >= 2 ? 2 : 1;
-        w.explode(e.x, e.y, C.detonateRadius, C.damage * mult, e.owner, "singularity", { knock: 600, hitOwner: false });
+        w.explode(e.x, e.y, C.detonateRadius, C.damage * mult, e.owner, "singularity", { knock: 600, hitOwner: false, walls: true });
         for (const pl of w.players.values()) {
-          if (pl.alive && pl.id !== e.owner && dist2(pl.x, pl.y, e.x, e.y) < (C.detonateRadius + pl.r) ** 2) pl.status.slowed = Math.max(pl.status.slowed ?? 0, 0.6);
+          if (!pl.alive || pl.id === e.owner || dist2(pl.x, pl.y, e.x, e.y) >= (C.detonateRadius + pl.r) ** 2) continue;
+          if (wallBetween(w, e.x, e.y, pl.x, pl.y)) continue;
+          pl.status.slowed = Math.max(pl.status.slowed ?? 0, 0.6);
         }
       },
     },

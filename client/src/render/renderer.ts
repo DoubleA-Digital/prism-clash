@@ -146,6 +146,7 @@ export class Renderer {
       playerName: f.names,
       pos: (id) => (id === f.myId && mePos ? mePos : view?.players.find((p) => p.id === id)),
       seeCloaked: f.seeCloaked,
+      canSee: (x, y) => !f.viewer || canSeePoint(map, f.viewer.x, f.viewer.y, x, y, PLAYER.radius * 0.8),
     };
 
     this.floor.draw(ctx, f.time, bounds);

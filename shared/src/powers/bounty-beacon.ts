@@ -1,6 +1,8 @@
 // BOUNTY BEACON: put a price on the match leader's head. They glow gold for everyone for 6s,
 // can't hide in bushes, and anyone who damages them gains ultimate charge (world.damage
 // handles the charge). A "beacon" effect follows each target to draw the column of light.
+// LOS exception, on purpose: a bountied target is shown to everyone in view range even behind
+// walls (world.visibleTo); a price on your head is the point. Marking itself ignores walls too.
 
 import { POWERS } from "../config";
 import { dist2 } from "../math/vec";

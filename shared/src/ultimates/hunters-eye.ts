@@ -3,6 +3,9 @@
 // fireShot's homing flag, steerHoming). One hunterMark effect per enemy carries the
 // caster→target link so the caster's client can draw a reticle on each; the effect itself
 // sits on the caster so it never leaks a hidden target's position to anyone else.
+// Every gun's bullets, pellets and rockets home (the clone's too). LOS: seeing through walls is
+// the ultimate's fantasy, but the homing is not: a shot only curves toward an enemy it has a
+// clear line to, so bullets never bend around corners or over cover (projectiles.steerHoming).
 
 import { ULTIMATES } from "../config";
 import { defineUlt } from "../sim/hooks";
@@ -15,7 +18,7 @@ const C = ULTIMATES.huntersEye;
 export const huntersEye = defineUlt({
   id: "huntersEye",
   name: "Hunter's Eye",
-  description: "For 8s see every enemy on the minimap and through Void Cloak, bushes and walls, and your shots home toward the nearest enemy.",
+  description: `For ${C.duration}s see every enemy on the minimap and through Void Cloak, bushes and walls, and your shots home toward the nearest enemy in their line of fire.`,
   color: "#FF3B4E",
   drawIcon(ctx, size) {
     ultFrame(ctx, size, "#4a0710");

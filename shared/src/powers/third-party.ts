@@ -1,13 +1,15 @@
-// THIRD-PARTY: for 5s you deal double damage to anyone someone else is already hurting
-// (world.damage applies the doubling from the "thirdParty" status). The caster's "vulture"
-// effect (n = 0) follows them as a crimson aura and keeps one marker effect (n = 1,
-// link = target) on every enemy that currently qualifies, so the caster's client can draw
-// crosshairs on exactly the players worth swooping in on.
+// THIRD-PARTY: for 5s you deal bonus damage (any gun, any power) to anyone someone else is
+// already hurting (world.damage applies the multiplier from the "thirdParty" status). The
+// caster's "vulture" effect (n = 0) follows them as a crimson aura and keeps one marker effect
+// (n = 1, link = target) on every enemy that currently qualifies and that the caster can
+// actually see (in view range, no wall or smoke between), so the crosshairs never leak a
+// position the server wouldn't send anyway.
 
-import { POWERS } from "../config";
+import { INTEREST, POWERS } from "../config";
 import { definePower } from "../sim/hooks";
 import type { Effect } from "../sim/types";
 import type { World } from "../sim/world";
+import { grantBuff, inSight } from "./geometry";
 import { glow, poly } from "./icon";
 
 const C = POWERS.thirdParty;
@@ -24,6 +26,8 @@ function track(w: World, aura: Effect) {
   aura.hits ??= new Map();
   for (const t of w.enemiesOf(owner)) {
     if (!w.hurtByOther(t, owner.id)) continue;
+    if (Math.abs(t.x - owner.x) > INTEREST.halfW || Math.abs(t.y - owner.y) > INTEREST.halfH) continue;
+    if (!inSight(w, owner.x, owner.y, t.x, t.y)) continue;
     const mid = aura.hits.get(t.id);
     const m = mid !== undefined ? w.effects.get(mid) : undefined;
     if (m && !m.dead) {
@@ -38,7 +42,7 @@ function track(w: World, aura: Effect) {
 export const thirdParty = definePower({
   id: "thirdParty",
   name: "Third-Party",
-  description: "For 5s, deal double damage to any enemy who is currently being damaged by someone else.",
+  description: `For ${C.duration}s, deal +${Math.round((C.mult - 1) * 100)}% damage to any enemy who is currently being damaged by someone else.`,
   color: "#FF2B4A",
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {
@@ -61,12 +65,12 @@ export const thirdParty = definePower({
     ctx.font = `900 ${size * 0.2}px Orbitron, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("×2", size * 0.3, size * 0.36);
+    ctx.fillText(`×${C.mult}`, size * 0.3, size * 0.36);
   },
   onCast(w, p) {
-    w.addStatus(p, "thirdParty", C.duration);
+    const left = grantBuff(w, p, "thirdParty", C.duration);
     for (const e of w.effects.values()) if (e.kind === "vulture" && e.owner === p.id && e.n === 0) e.dead = true;
-    w.spawnEffect({ kind: "vulture", owner: p.id, source: "thirdParty", x: p.x, y: p.y, r: p.r, life: C.duration, n: 0 });
+    w.spawnEffect({ kind: "vulture", owner: p.id, source: "thirdParty", x: p.x, y: p.y, r: p.r, life: left, n: 0 });
     return true;
   },
   effects: {

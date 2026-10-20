@@ -49,6 +49,8 @@ export interface PowerDef {
   onRecast?(w: World, p: Player, slot: PowerSlot): void;
   /** The recast window ran out without a recast. */
   onRecastExpire?(w: World, p: Player, slot: PowerSlot): void;
+  /** The power leaves its slot mid-match (a Prism Shard pick replaced it): clear passive leftovers. */
+  onUnequip?(w: World, p: Player): void;
   /** Every tick for players holding this power (passive bits, trails while active). */
   onPlayerTick?(w: World, p: Player, dt: number): void;
   /** Called when a projectile from this power hits a player (instead of plain damage). */

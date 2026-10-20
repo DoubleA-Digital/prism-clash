@@ -19,6 +19,9 @@ export interface RenderCtx {
   pos?(id: number): { x: number; y: number } | undefined;
   /** Hunter's Eye / spectating: cloaked players are shown clearly. */
   seeCloaked?: boolean;
+  /** Is a world point in the viewer's line of sight? Clones and decoys pass for players, so
+   *  they're hidden behind walls exactly like players are. Absent = everything visible. */
+  canSee?(x: number, y: number): boolean;
   fx: Fx;
   /** 1 / camera scale: multiply screen pixel sizes by this for world units. */
   invScale: number;

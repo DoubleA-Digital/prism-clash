@@ -3,7 +3,7 @@
 import { describe, expect, test } from "vitest";
 import {
   addBush,
-  allUlts, BTN, PF, ULT_IDS, ULTIMATES, World, pointSegment,
+  allUlts, BTN, PF, ULT_IDS, ULTIMATES, WEAPONS, World, pointSegment,
   type GameEvent, type InputFrame, type Player, type PowerId, type UltId,
 } from "@prism/shared";
 import { finalStandDamage } from "../src/ultimates/final-stand";
@@ -112,9 +112,11 @@ describe("ultimates", () => {
     expect(s.w.hasStatus(s.caster, "overdrive")).toBe(true);
     expect([...s.w.effects.values()].some((e) => e.kind === "overdriveAura" && e.owner === 1)).toBe(true);
     s.run(60, () => frame(s.caster, BTN.shoot, 0));
-    // The pistol fires every 0.24s (~8 in 2s, plus a reload); overdrive doubles the rate and spends no ammo.
+    // The pistol fires every 0.24s (~8 in 2s, plus a reload); overdrive speeds it up and spends no ammo.
     const shots = s.events.filter((e) => e.t === "shoot" && e.by === 1).length;
-    expect(shots).toBeGreaterThanOrEqual(15);
+    const expected = Math.floor(2 / (WEAPONS.pistol.fireCd / ULTIMATES.overdrive.fireRateMult));
+    expect(shots).toBeGreaterThanOrEqual(expected - 1);
+    expect(shots).toBeGreaterThan(Math.ceil(2 / WEAPONS.pistol.fireCd));
     expect(s.caster.inv.weapons[0]?.mag).toBe(12);
   });
 

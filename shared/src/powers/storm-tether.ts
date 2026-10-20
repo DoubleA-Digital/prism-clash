@@ -1,6 +1,9 @@
 // STORM TETHER: a fast lightning bolt that chains you to whoever it hits. Both of you take
 // light chip damage while linked; if they pull farther than the max length the chain snaps
 // for big damage. A bolt fired through a portal stays linked through it (Storm Gate).
+// Walls cut the chain: if a wall (or rock, or crystal) sits across it for wallBreak seconds it
+// breaks harmlessly, so ducking around a corner is the counterplay to a tether. Low cover,
+// crates and glass don't cut it.
 
 import { NET, POWERS } from "../config";
 import { dist } from "../math/vec";
@@ -8,6 +11,7 @@ import { definePower } from "../sim/hooks";
 import type { Effect, Player } from "../sim/types";
 import { PF, PROJ } from "../sim/types";
 import type { World } from "../sim/world";
+import { wallBetween } from "./geometry";
 import { glow, poly } from "./icon";
 
 const C = POWERS.stormTether;
@@ -36,6 +40,15 @@ function chain(w: World, e: Effect, a: Player, b: Player): { length: number; rou
   return routed < direct ? { length: routed, route } : { length: direct, route: null };
 }
 
+/** Hits key holding when a wall first cut the chain (absent while it's clear). */
+const CUT_SINCE = -1;
+
+/** Does a wall cut the chain as it currently runs (each leg of a portal route counts)? */
+function cutByWall(w: World, a: Player, b: Player, route: ReturnType<typeof portalRoute>): boolean {
+  if (!route) return wallBetween(w, a.x, a.y, b.x, b.y);
+  return wallBetween(w, a.x, a.y, route.ax, route.ay) || wallBetween(w, route.bx, route.by, b.x, b.y);
+}
+
 /** Picks which portal of the pair the bolt entered (the orientation with the shorter chain). */
 function entryPortal(w: World, owner: number, caster: Player, target: Player): number {
   for (const a of w.effects.values()) {
@@ -52,7 +65,7 @@ function entryPortal(w: World, owner: number, caster: Player, target: Player): n
 export const stormTether = definePower({
   id: "stormTether",
   name: "Storm Tether",
-  description: "Fire a lightning bolt that chains you to an enemy. If they get too far away the chain snaps for 30. Works through portals.",
+  description: `Fire a lightning bolt that chains you to an enemy. If they get too far away the chain snaps for ${C.snapDamage}. Walls cut it. Works through portals.`,
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size) {
@@ -115,6 +128,18 @@ export const stormTether = definePower({
           e.x = (a.x + b.x) / 2;
           e.y = (a.y + b.y) / 2;
         }
+        // A wall across the chain for long enough breaks it, without the snap damage.
+        e.hits ??= new Map();
+        if (cutByWall(w, a, b, route)) {
+          const since = e.hits.get(CUT_SINCE) ?? w.time;
+          e.hits.set(CUT_SINCE, since);
+          if (w.time - since >= C.wallBreak) {
+            w.emit({ t: "impact", x: e.x, y: e.y, color: w.colorOf(a.id), size: 2 });
+            e.v = 1;
+            e.life = e.age + C.snapLinger;
+            return;
+          }
+        } else e.hits.delete(CUT_SINCE);
         if (length > e.r) {
           // Snap: big hit on the target, then a brief recoil visual.
           w.damage(b, C.snapDamage, a.id, "stormTether", { x: b.x, y: b.y });

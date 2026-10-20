@@ -1,5 +1,9 @@
 // The six named combos. Each power calls triggerCombo at the exact moment its combo
 // happens; using someone else's effect as an ingredient makes it a STOLEN COMBO.
+// In the v2 world: Event Horizon Blade's orbiting glaive and Gravity Slam's doubled blast
+// don't reach through walls; Prism Portal works with any gun's ricochet shots (rockets
+// included); Storm Gate's chain is cut by walls on either side of the portals; Frozen Harvest
+// catches any gun's projectiles; Lava Lock is unchanged (swaps land on clear floor).
 
 import type { World } from "../sim/world";
 

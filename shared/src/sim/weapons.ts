@@ -39,6 +39,17 @@ export function onFrameActions(w: World, p: Player, out: FrameOut, f: InputFrame
   if (out.throwItem) throwItem(w, p, out.throwItem, f.aim);
 }
 
+/** Void Cloak: the first attack out of cloak (any gun, the lance or the blade) is a crit, and
+ *  attacking drops the cloak. Returns whether this attack crits. */
+export function takeCloakCrit(p: Player): boolean {
+  const crit = p.cloakCrit || (p.status.cloaked ?? 0) > 0;
+  if (crit) {
+    p.cloakCrit = false;
+    p.status.cloaked = 0;
+  }
+  return crit;
+}
+
 function markFired(w: World, p: Player) {
   w.stat(p.id).shots++;
   w.firedAt.set(p.id, w.tick);
@@ -59,12 +70,8 @@ export function fireVolley(w: World, p: Player, shotId: number, bloom: number, a
     flags |= PF.ricochet;
     maxBounces = POWERS.ricochetPrism.maxBounces;
   }
-  const crit = p.cloakCrit || (p.status.cloaked ?? 0) > 0;
-  if (crit) {
-    flags |= PF.crit;
-    p.cloakCrit = false;
-    p.status.cloaked = 0;
-  }
+  const crit = takeCloakCrit(p);
+  if (crit) flags |= PF.crit;
   if ((p.status.hunter ?? 0) > 0) flags |= PF.homing;
   const start = muzzle(w, p.x, p.y, aim);
   for (const a of angles) {
@@ -92,7 +99,11 @@ export function fireLance(w: World, p: Player, charge: number, aim: number) {
   const item = activeWeapon(p);
   if (!item) return;
   const def = WEAPONS.lance;
-  const dmg = weaponDamage(item) * (def.minCharge + (1 - def.minCharge) * charge);
+  const cloakCrit = takeCloakCrit(p);
+  // Ricochet Prism: extra reflections, each one hitting harder.
+  const ricochet = (p.status.ricochet ?? 0) > 0;
+  const bounces = def.bounces + (ricochet ? POWERS.ricochetPrism.lanceBounces : 0);
+  let dmg = weaponDamage(item) * (def.minCharge + (1 - def.minCharge) * charge) * (cloakCrit ? GUN.critMult : 1);
   const lat = Math.min(w.latencyTicks.get(p.id) ?? 0, Math.round((NET.lagCompMaxMs / 1000) * NET.tickRate));
   const hit = new Set<number>();
   let x = p.x;
@@ -100,7 +111,7 @@ export function fireLance(w: World, p: Player, charge: number, aim: number) {
   let dx = Math.cos(aim);
   let dy = Math.sin(aim);
   let left = def.beamRange;
-  for (let seg = 0; seg <= def.bounces && left > 20; seg++) {
+  for (let seg = 0; seg <= bounces && left > 20; seg++) {
     const ex = x + dx * left;
     const ey = y + dy * left;
     const wall = sweepSolids(w.map, x, y, ex, ey, 0);
@@ -112,7 +123,7 @@ export function fireLance(w: World, p: Player, charge: number, aim: number) {
       const pos = w.positionAt(o, w.tick - lat);
       if (pointSegment(pos.x, pos.y, x, y, hx, hy).d > o.r + 10) continue;
       hit.add(o.id);
-      const dealt = w.damage(o, dmg, p.id, "lance", { x: pos.x, y: pos.y, crit: charge >= 0.999 });
+      const dealt = w.damage(o, dmg, p.id, "lance", { x: pos.x, y: pos.y, crit: charge >= 0.999 || cloakCrit });
       if (dealt > 0) w.stat(p.id).hits++;
     }
     w.spawnEffect({ kind: "beam", owner: p.id, source: "lance", x, y, x2: hx, y2: hy, r: 6 + charge * 8, life: 0.32, n: seg, v: charge });
@@ -124,6 +135,7 @@ export function fireLance(w: World, p: Player, charge: number, aim: number) {
     dy -= 2 * dot * wall.ny;
     x = hx + wall.nx * 2;
     y = hy + wall.ny * 2;
+    if (ricochet) dmg *= 1 + POWERS.ricochetPrism.damagePerBounce;
     w.emit({ t: "bounce", x: hx, y: hy, n: seg + 1 });
   }
   markFired(w, p);
@@ -136,7 +148,8 @@ export function swingBlade(w: World, p: Player, aim: number) {
   if (!item) return;
   const def = WEAPONS.blade;
   const half = (def.arc / 2) * (Math.PI / 180);
-  const dmg = weaponDamage(item);
+  const crit = takeCloakCrit(p);
+  const dmg = weaponDamage(item) * (crit ? GUN.critMult : 1);
   for (const o of w.players.values()) {
     if (!o.alive || o.id === p.id) continue;
     const dx = o.x - p.x;
@@ -148,7 +161,7 @@ export function swingBlade(w: World, p: Player, aim: number) {
     while (da < -Math.PI) da += Math.PI * 2;
     if (Math.abs(da) > half && d > o.r + p.r) continue;
     if (bulletBlocked(w.map, p.x, p.y, o.x, o.y)) continue;
-    const dealt = w.damage(o, dmg, p.id, "blade", { x: o.x, y: o.y });
+    const dealt = w.damage(o, dmg, p.id, "blade", { x: o.x, y: o.y, crit });
     if (dealt > 0) w.stat(p.id).hits++;
     w.impulse(o, (dx / (d || 1)) * 380, (dy / (d || 1)) * 380);
   }

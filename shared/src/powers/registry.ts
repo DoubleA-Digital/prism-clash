@@ -23,3 +23,4 @@ import "./third-party";
 
 export { allPowers, powerDef } from "../sim/hooks";
 export { COMBO_NAMES, triggerCombo } from "./combos";
+export { equipPower } from "./equip";

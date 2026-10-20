@@ -1,16 +1,20 @@
 // BOOMERANG GLAIVE: a spinning blade that arcs out to range, then homes back to you, cutting
 // anyone it passes on both legs. It flies back to where you threw it: be there to catch it
-// and the cooldown resets instantly.
+// and the cooldown resets instantly. It bounces off walls and cover (chipping crates, glass and
+// barrels it strikes) and shatters after a few wall hits; it moves in small steps against the
+// map, so it can never slip through a thin wall.
 // Combo (Event Horizon Blade): a glaive passing near a Singularity is captured into orbit
 // around the black hole and shreds everyone near it until the hole detonates.
 
 import { COMBOS, HAZARD_TICK, NET, POWERS } from "../config";
 import { dist2 } from "../math/vec";
+import { resolveCircle, type WallContact } from "../sim/collision";
 import { definePower } from "../sim/hooks";
 import type { Effect, Player } from "../sim/types";
 import type { World } from "../sim/world";
 import { triggerCombo } from "./combos";
 import { popDecoy } from "./decoy-swarm";
+import { wallBetween } from "./geometry";
 import { glow, poly } from "./icon";
 
 const C = POWERS.boomerangGlaive;
@@ -20,6 +24,46 @@ const ORBIT_EVERY = Math.max(1, Math.round(HAZARD_TICK * NET.tickRate));
 
 /** Glaive phases (Effect.n). */
 export const GLAIVE = { out: 0, back: 1, caught: 2, orbit: 3 } as const;
+/** Effect.hits key counting wall bounces (player ids are positive). */
+const BOUNCES = -1;
+
+/** Moves the glaive by its velocity in sub-steps against the map; the hardest wall contact, if any. */
+function travel(w: World, e: Effect, dt: number): WallContact | null {
+  const dx = e.vx * dt;
+  const dy = e.vy * dt;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (e.r * 0.5)));
+  const body = { x: e.x, y: e.y, vx: e.vx, vy: e.vy };
+  let hit: WallContact | null = null;
+  for (let i = 0; i < steps; i++) {
+    body.x += dx / steps;
+    body.y += dy / steps;
+    const c = resolveCircle(w.map, body, e.r);
+    if (c && (!hit || c.impact > hit.impact)) hit = c;
+  }
+  e.x = body.x;
+  e.y = body.y;
+  return hit;
+}
+
+/** Bounced off terrain: chip what it struck, reflect, and shatter after too many bounces. */
+function bounceOff(w: World, e: Effect, c: WallContact) {
+  const vn = e.vx * c.nx + e.vy * c.ny;
+  // Grazing contact while already moving away (sliding off a corner) isn't a bounce.
+  if (vn >= 0) return;
+  w.damageArea(e.x - c.nx * e.r, e.y - c.ny * e.r, 8, C.solidDamage, e.owner);
+  e.vx -= 2 * vn * c.nx;
+  e.vy -= 2 * vn * c.ny;
+  // Outbound flight is steered by its heading: mirror that too.
+  const hx = Math.cos(e.angle);
+  const hy = Math.sin(e.angle);
+  const hn = hx * c.nx + hy * c.ny;
+  if (hn < 0) e.angle = Math.atan2(hy - 2 * hn * c.ny, hx - 2 * hn * c.nx);
+  e.hits ??= new Map();
+  const n = (e.hits.get(BOUNCES) ?? 0) + 1;
+  e.hits.set(BOUNCES, n);
+  w.emit({ t: "impact", x: e.x, y: e.y, color: w.colorOf(e.owner), size: 1 });
+  if (n > C.wallBounces) e.dead = true;
+}
 
 function hitReady(e: Effect, key: number, now: number, cd: number): boolean {
   e.hits ??= new Map();
@@ -65,17 +109,9 @@ function flyOut(w: World, e: Effect, dt: number) {
   // Curves to the thrower's left, like a right-handed boomerang.
   e.vx = dx * fwd + dy * lat;
   e.vy = dy * fwd - dx * lat;
-  e.x += e.vx * dt;
-  e.y += e.vy * dt;
+  const wall = travel(w, e, dt);
+  if (wall) bounceOff(w, e, wall);
   if (e.age >= OUT_TIME) turnBack(e);
-  if (!w.insideArena(e.x, e.y, e.r)) {
-    // Bumped into terrain: chip any crate, glass or fence it hit, then turn around.
-    w.damageArea(e.x, e.y, e.r, C.solidDamage, e.owner);
-    e.x -= e.vx * dt;
-    e.y -= e.vy * dt;
-    turnBack(e);
-    w.emit({ t: "impact", x: e.x, y: e.y, color: w.colorOf(e.owner), size: 1 });
-  }
 }
 
 /** Returns to the spot it was thrown from (x2, y2), not to you: stand your ground or move to
@@ -93,10 +129,9 @@ function flyBack(w: World, e: Effect, owner: Player, dt: number) {
     e.vx += ((dx / d) * C.returnSpeed - e.vx) * k;
     e.vy += ((dy / d) * C.returnSpeed - e.vy) * k;
   }
-  e.x += e.vx * dt;
-  e.y += e.vy * dt;
-  // Missed: it sails on past the throw point and fades out at the wall.
-  if (!w.insideArena(e.x, e.y, e.r)) e.dead = true;
+  // Off a wall it keeps steering home; missed, it sails on and ricochets until it shatters.
+  const wall = travel(w, e, dt);
+  if (wall) bounceOff(w, e, wall);
 }
 
 function orbit(w: World, e: Effect, dt: number) {
@@ -115,6 +150,8 @@ function orbit(w: World, e: Effect, dt: number) {
   if (w.tick % ORBIT_EVERY !== 0) return;
   for (const p of w.playersNear(s.x, s.y, C.orbitHitRadius, e.owner)) {
     if ((p.status.airborne ?? 0) > 0) continue;
+    // The orbiting blade shreds around the hole, but not through a wall next to it.
+    if (wallBetween(w, s.x, s.y, p.x, p.y)) continue;
     w.damage(p, COMBOS.singularityOrbitDps * HAZARD_TICK, e.owner, "boomerangGlaive", { x: p.x, y: p.y });
   }
 }
@@ -140,7 +177,7 @@ function cut(w: World, e: Effect) {
 export const boomerangGlaive = definePower({
   id: "boomerangGlaive",
   name: "Boomerang Glaive",
-  description: "Throw a spinning blade that curves out and returns, cutting on both passes. Catch it to reset the cooldown.",
+  description: `Throw a spinning blade that curves out and returns, cutting for ${C.damage} on both passes and bouncing off walls. Catch it to reset the cooldown.`,
   color: "#2EF2D0",
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {
@@ -198,6 +235,7 @@ export const boomerangGlaive = definePower({
         }
         if (e.n === GLAIVE.out) flyOut(w, e, dt);
         else flyBack(w, e, owner, dt);
+        if (e.dead) return;
         if (tryCapture(w, e)) return;
         cut(w, e);
         if (e.n === GLAIVE.back && dist2(e.x, e.y, owner.x, owner.y) <= C.catchRadius * C.catchRadius) catchGlaive(e, owner);
