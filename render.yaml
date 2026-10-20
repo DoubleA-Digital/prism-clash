@@ -4,7 +4,15 @@ services:
     name: prism-clash
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    # Render's system Node folder is read-only (so `corepack enable` can fail): install pnpm into
+    # a user prefix instead. NODE_ENV=production would make pnpm skip the build tools, hence
+    # --prod=false.
+    buildCommand: >-
+      npm install -g --prefix "$HOME/.pnpm-cli" pnpm@10.34.7 &&
+      export PATH="$HOME/.pnpm-cli/bin:$PATH" &&
+      pnpm --version &&
+      pnpm install --frozen-lockfile --prod=false &&
+      pnpm build
     startCommand: node server/dist/main.js
     healthCheckPath: /healthz
     envVars:
