@@ -347,15 +347,126 @@ export const COMBOS = {
 
 export const BOTS = {
   thinkHz: 10,
+  /**
+   * reaction: seconds before a newly seen enemy is noticed (and between aim updates).
+   * aimErrorDeg: aim error per sample; aimSettle: how much of it fades while tracking the same target.
+   * aggression: appetite for fights; lootSmarts: how well they judge loot (low = noisy picks);
+   * coverUse: chance to break line of sight to reload or after a burst of damage;
+   * hearing: multiplier on hearing ranges; leadSkill: how much they lead moving targets;
+   * throwSkill: willingness to use throwables well.
+   */
   difficulty: {
-    easy: { reaction: 0.45, aimErrorDeg: 12, castChance: 0.35, dodgeSkill: 0.35, rangeMult: 0.8 },
-    normal: { reaction: 0.3, aimErrorDeg: 7, castChance: 0.65, dodgeSkill: 0.65, rangeMult: 0.72 },
-    hard: { reaction: 0.17, aimErrorDeg: 4, castChance: 0.9, dodgeSkill: 0.9, rangeMult: 0.65 },
+    easy: { reaction: 0.45, aimErrorDeg: 12, castChance: 0.35, dodgeSkill: 0.35, aggression: 0.8, lootSmarts: 0.55, coverUse: 0.25, hearing: 0.75, leadSkill: 0.45, throwSkill: 0.35, aimSettle: 0.1 },
+    normal: { reaction: 0.3, aimErrorDeg: 7, castChance: 0.65, dodgeSkill: 0.65, aggression: 1, lootSmarts: 0.8, coverUse: 0.6, hearing: 1, leadSkill: 0.7, throwSkill: 0.65, aimSettle: 0.2 },
+    hard: { reaction: 0.17, aimErrorDeg: 4, castChance: 0.9, dodgeSkill: 0.9, aggression: 1.1, lootSmarts: 1, coverUse: 0.9, hearing: 1.15, leadSkill: 0.9, throwSkill: 0.9, aimSettle: 0.3 },
   },
+  /**
+   * Per-bot personality (picked by weight, then jittered) so a lobby of bots doesn't move as
+   * one blob. Multipliers on the difficulty numbers, plus their own heal threshold.
+   */
+  personalities: {
+    aggressive: { weight: 3, aggression: 1.35, caution: 0.6, loot: 0.85, range: 0.85, rotateEarly: 1.1, ambush: 0.3, healBelow: 42, supply: 1.35, thirdParty: 1.4 },
+    cautious: { weight: 3, aggression: 0.72, caution: 1.4, loot: 1, range: 1.15, rotateEarly: 1.6, ambush: 1.4, healBelow: 70, supply: 0.7, thirdParty: 0.75 },
+    looter: { weight: 3, aggression: 0.9, caution: 1, loot: 1.5, range: 1, rotateEarly: 1.3, ambush: 0.7, healBelow: 58, supply: 1.1, thirdParty: 1 },
+  },
+  /** Each personality number is scaled by a random factor in 1 ± this. */
+  personalityJitter: 0.12,
+  /**
+   * Navigation grid and A*. cell: grid size; clearance: a cell is open when a circle this
+   * big at its center touches no solid (tightClearance/tightCost: squeezes allowed at a steep
+   * cost, so pockets stay connected); nearPad/nearCost: extra cost for hugging walls;
+   * waterCost: extra cost for wading; maxExpand: node budget per search (partial path after);
+   * searchesPerTick: A* runs allowed per world per tick; repath*: per-bot re-path pacing.
+   */
+  nav: {
+    cell: 40, clearance: 24, nearPad: 40, nearCost: 5, waterCost: 14, tightClearance: 16, tightCost: 40, maxExpand: 6000, searchesPerTick: 2, heuristicWeight: 1.15,
+    /** Smoothed straight cuts must keep a body this big clear of every solid. */
+    clearRadius: 18,
+    waypointReach: 34, repathSeconds: 1.6, repathMinSeconds: 0.35, goalDrift: 110, offPath: 150, smoothLookahead: 28, directRange: 240,
+  },
+  /** What bots can sense: sight uses the same LOS + bush rules as players; sounds have ranges. */
+  perception: {
+    /**
+     * Bots see what a player's screen shows: a box FX.viewHeight tall at a 16:9 aspect (plus a
+     * small margin), grown by FX.scopeZoom while scoped with a sniper. Within it, World.visibleTo.
+     */
+    viewAspect: 16 / 9,
+    viewMargin: 60,
+    hearing: { gun: 1300, sniper: 2100, rocket: 1700, lance: 1200, blade: 420, explosion: 1800, throw: 450 },
+    /** Heard positions are off by up to this fraction of the distance. */
+    soundFuzz: 0.12,
+    /** Being shot reveals roughly where from (± units). */
+    hitFuzz: 70,
+    forgetSeconds: 8,
+    noiseSeconds: 6,
+    /** Re-seeing someone after this long counts as a new sighting (reaction delay again). */
+    renoticeSeconds: 1.2,
+    cloakSeeRange: 160,
+  },
+  combat: {
+    /** Distance each gun likes to fight at (before the personality's range factor). */
+    prefRange: { pistol: 420, smg: 270, rifle: 520, shotgun: 150, sniper: 950, rocket: 480, lance: 720, blade: 50 },
+    strafeSeconds: [0.45, 1.3],
+    /** Cover search: rings around the bot, samples per ring. */
+    coverRings: [100, 190, 290, 400, 520],
+    coverSamples: 12,
+    coverHold: [0.6, 1.6],
+    /** Damage taken within 1.5 s that makes a bot break line of sight. */
+    burstDamage: 28,
+    pursueSeconds: 3.5,
+    /** Someone this close (or inside our gun's range, if shorter) is a fight whether we like it or not. */
+    engageRange: 520,
+    /** Fights they'll take: win chance below this makes them disengage. */
+    fleeBelow: 0.3,
+    /** Bonus win chance against someone already fighting another player. */
+    thirdPartyBonus: 0.15,
+    /** Penalty per extra enemy in sight. */
+    crowdPenalty: 0.1,
+  },
+  throws: { fragRange: [230, 500], clusterRadius: 230, smokeRange: 750, mineChokeRange: 200, mineChaseRange: 420, chance: 0.2 },
+  /** Loot scoring: weapon tier plus rarity × rarityValue. */
+  weaponTier: { pistol: 0, smg: 2.2, rifle: 3, shotgun: 2.6, sniper: 2.5, rocket: 2.4, lance: 2.7, blade: 1.6 },
+  rarityValue: 1.1,
   /** Bots notice loot within this range when not fighting. */
   lootRange: 650,
-  /** Heal when below this HP and nobody is shooting at them. */
+  crateRange: 600,
+  /** Give up on a loot item / crate after chasing it this long, and ignore it for `ignore` s. */
+  goalTimeout: { loot: 12, crate: 10, ignore: 30, noProgress: 4 },
+  /** Default heal threshold (personalities override it). */
   healBelow: 55,
+  /** Quiet time (no enemy seen, heard close or felt) needed before committing to a heal. */
+  medkitQuietSeconds: 3.5,
+  bandageQuietSeconds: 1.5,
+  /** Zone rotation: aim this far inside the next circle; ETA is padded by etaSlack. */
+  zone: { inset: 0.55, etaSlack: 1.35, edgeMargin: 140 },
+  supply: { range: 1900, minHealth: 70 },
+  ambush: { seconds: [6, 14], cooldown: 22, search: 420 },
+  investigate: { memory: 3.5, minHealth: 60, stopShort: 320, range: 1700 },
+  /** Utility weights: each state's score from the situation (see server/src/bots/utility.ts). */
+  utility: {
+    roam: 0.18,
+    outsideZone: 1.3,
+    fight: {
+      aggressionPow: 0.7, base: 0.4, win: 0.6, closeRange: 350, closeBonus: 0.25, chaseBase: 0.2, chaseWin: 0.45,
+      losing: 0.45, unengagedBase: 0.3, unfavored: 0.6,
+    },
+    flee: { lowHealth: 60, hurt: 1.1, healthy: 0.65, scale: 0.75, unseen: 0.55 },
+    heal: { base: 0.55, missing: 0.6, noisy: 0.35, threatRange: 600, threatened: 0.3 },
+    loot: { cap: 0.85, valueScale: 7, falloff: 700, unarmedBonus: 0.15 },
+    crate: { unarmed: 0.35, base: 0.12 },
+    supply: { base: 0.5, armed: 0.15 },
+    investigate: 0.42,
+    ambush: 0.3,
+    ambushLate: 1.3,
+  },
+  /**
+   * Opening looting phase: for this long, picking a fight with someone far away who hasn't
+   * engaged us is scaled by earlyAppetite (so lobbies don't wipe out before anyone has a gun).
+   */
+  lootPhaseSeconds: 45,
+  earlyAppetite: 0.15,
+  /** Score bonus that keeps the current state (stops flip-flopping). */
+  stickiness: 0.12,
   names: ["NOVA", "VEX", "ORBIT", "KILO", "ZEPHYR", "QUASAR", "HALO", "RIFT", "ECHO", "PULSE", "ION", "AXIOM", "JINX", "TALON"],
 } as const;
 
