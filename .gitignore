@@ -5,3 +5,4 @@ dist/
 test-results/
 e2e/out/
 .nettest/
+.claude/
