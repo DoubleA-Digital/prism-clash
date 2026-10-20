@@ -1,0 +1,29 @@
+/* Hero picker: 8 portrait cards in the Neon Void card style. The selected card glows in the
+   player's color (--c); each card carries its hero's accent (--h) as a hover hint. */
+
+.hero-picker { --c: #00f0ff; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; width: 100%; max-width: 54rem; }
+@media (max-width: 720px) { .hero-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.hero-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.5rem 0.6rem 0.8rem; border-radius: 1.1rem; text-align: center; overflow: hidden; background: linear-gradient(170deg, color-mix(in srgb, var(--h) 9%, #17154a), #0a0922 70%); border: 2px solid color-mix(in srgb, var(--h) 22%, rgba(124, 246, 255, 0.12)); box-shadow: 0 0.3rem 0 #07061a, 0 0.8rem 1.6rem rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07); transition: transform 0.18s var(--back, cubic-bezier(0.2, 1.5, 0.35, 1)), border-color 0.15s, box-shadow 0.2s; animation: hero-in 0.5s var(--back, cubic-bezier(0.2, 1.5, 0.35, 1)) both; animation-delay: calc(var(--i, 0) * 0.05s); }
+.hero-card::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--h) 22%, transparent), transparent 62%), repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 12px); opacity: 0.8; transition: opacity 0.2s; }
+.hero-card:hover, .hero-card:focus-visible { transform: translateY(-0.3rem); border-color: color-mix(in srgb, var(--h) 70%, #fff); box-shadow: 0 0.45rem 0 #07061a, 0 0 1.6rem color-mix(in srgb, var(--h) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.hero-card.on { border-color: var(--c); box-shadow: 0 0.3rem 0 #07061a, 0 0 0 1px var(--c), 0 0 2.2rem color-mix(in srgb, var(--c) 45%, transparent), inset 0 0 2rem color-mix(in srgb, var(--c) 16%, transparent); background: linear-gradient(170deg, color-mix(in srgb, var(--c) 18%, #17154a), #0a0922 70%); }
+.hero-card.on::before { background: radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--c) 30%, transparent), transparent 62%), repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 12px); }
+.hero-card.on::after { content: "✓"; position: absolute; top: 0.5rem; right: 0.5rem; width: 1.3rem; height: 1.3rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 900; color: #05040d; background: #fff; box-shadow: 0 0 1rem var(--c); }
+.hero-card.picked .hero-portrait { animation: hero-hop 0.45s var(--back, cubic-bezier(0.2, 1.5, 0.35, 1)); }
+.hero-card.off { opacity: 0.3; filter: grayscale(0.8); pointer-events: none; }
+
+.hero-portrait { position: relative; width: 8.5rem; height: 8.5rem; max-width: 100%; aspect-ratio: 1; height: auto; pointer-events: none; }
+.hero-card.on .hero-portrait { animation: hero-float 2.6s ease-in-out infinite; }
+.hero-card.on.picked .hero-portrait { animation: hero-hop 0.45s var(--back, cubic-bezier(0.2, 1.5, 0.35, 1)), hero-float 2.6s 0.45s ease-in-out infinite; }
+.hero-name { position: relative; font-family: var(--display, "Orbitron", sans-serif); font-weight: 900; font-size: 0.95rem; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; text-shadow: 0 0 0.9rem color-mix(in srgb, var(--h) 70%, transparent); }
+.hero-card.on .hero-name { text-shadow: 0 0 1rem var(--c); }
+.hero-tag { position: relative; font-family: var(--ui, "Rajdhani", sans-serif); font-weight: 600; font-size: 0.86rem; line-height: 1.15; color: #b9bee6; min-height: 2.3em; }
+
+@keyframes hero-in { from { opacity: 0; transform: translateY(1rem) scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes hero-hop { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-0.6rem) scale(1.1, 0.92); } 70% { transform: translateY(0.1rem) scale(0.96, 1.05); } 100% { transform: none; } }
+@keyframes hero-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.25rem); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-card, .hero-card .hero-portrait { animation: none !important; }
+}
