@@ -1,12 +1,13 @@
-// Decoy Swarm visuals: each decoy is a smaller, see-through copy of the owner's core (same
-// color, name and health bar, so at a glance they pass) with scrolling hologram scanlines and
-// the odd glitch. A popped decoy is a white starburst; if it blinded you, your screen
-// whites out for the blind duration.
+// Decoy Swarm visuals: each decoy is a smaller, see-through copy of the owner's hero (same
+// body, gun, color, name and health bar, so at a glance they pass) with scrolling hologram
+// scanlines and the odd glitch. Like real fighters they're hidden out of your line of sight.
+// A popped decoy is a white starburst; if it blinded you, your screen whites out for the
+// blind duration.
 
 import { hasStatusBit, PLAYER, POWERS, type NetEffect } from "@prism/shared";
 import { PSHAPE } from "../../fx/particles";
-import { drawCore } from "../core";
 import { drawGlow, withAlpha } from "../glow";
+import { drawLookalike } from "./lookalike";
 import { firstSight } from "./once";
 import type { RenderCtx } from "./types";
 
@@ -14,8 +15,7 @@ const HOLO = "#8FE9FF";
 
 export function drawDecoy(rc: RenderCtx, e: NetEffect) {
   const { ctx, time } = rc;
-  const owner = rc.player(e.owner);
-  const col = rc.color(e.owner);
+  if (e.owner !== rc.myId && rc.canSee && !rc.canSee(e.x, e.y)) return;
   if (firstSight(`decoy:${e.id}`, time)) rc.fx.particles.burst(e.x, e.y, 6, HOLO, 160, 0.35, 5);
   const fadeIn = Math.min(1, e.age / 0.15);
   const fadeOut = Math.min(1, Math.max(0, (e.life - e.age) / 0.5));
@@ -28,10 +28,8 @@ export function drawDecoy(rc: RenderCtx, e: NetEffect) {
   ctx.save();
   ctx.translate(e.x + jx, e.y);
   ctx.scale(s, s);
-  drawCore(ctx, {
-    x: 0, y: 0, color: col, colorIndex: owner?.color ?? 0, hp: owner?.hp ?? PLAYER.maxHp, aim: Math.atan2(e.vy, e.vx) || e.angle, time,
-    name: rc.playerName(e.owner), isMe: false, alpha, dashing: false, ultReady: false, bountied: false, slowed: false, inverted: false,
-    airborne: 0, invulnerable: false, disconnected: false, colorblind: false, invScale: rc.invScale / s, showBar: e.owner !== rc.myId,
+  drawLookalike(rc, e.owner, {
+    x: 0, y: 0, aim: Math.atan2(e.vy, e.vx) || e.angle, alpha, speed: Math.hypot(e.vx, e.vy), showBar: e.owner !== rc.myId, invScale: rc.invScale / s,
   });
   ctx.restore();
 
