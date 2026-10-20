@@ -1,15 +1,15 @@
 // Modal dialogs: Settings (tabs: general + controls with rebinding) and How to Play
 // (controls diagram, match flow, weapons and loot, survival tips, power and ultimate cards).
 
-import { allPowers, allUlts, MATCH, RARITY, WEAPON_IDS, WEAPONS } from "@prism/shared";
+import { allPowers, allUlts, MATCH, WEAPON_IDS, WEAPONS } from "@prism/shared";
 import { audio } from "../audio/audio";
 import { ACTION_LABELS, DEFAULT_BINDS, keyLabel, PAD_LABELS, saveBinds, type Action, type Input } from "../input/input";
 import { weaponIcon } from "../render/items";
 import { session } from "../net/session";
 import { saveSettings, settings } from "../settings";
-import { coreCanvas } from "./coreView";
 import { h } from "./dom";
 import { rem } from "./fx";
+import { rarityChips, survivalTips } from "./howtoTips";
 import { iconDataUrl } from "./icons";
 
 interface Tab {
@@ -157,7 +157,7 @@ function basics(input: Input): HTMLElement {
   const b = input.binds;
   const kl = (a: Action) => keyLabel(b[a]);
   const flow = [
-    { n: "1", t: "PICK", d: "Choose your ultimate and draft your first power.", c: "var(--violet)" },
+    { n: "1", t: "PICK", d: "Pick a hero in the lobby, then your ultimate and your first power.", c: "var(--violet)" },
     { n: "2", t: "DROP", d: `${MATCH.fighters} fighters spawn across a big map with just a pistol.`, c: "var(--cyan)" },
     { n: "3", t: "LOOT", d: "Grab guns, shields, heals and grenades from the floor, crates and supply drops.", c: "var(--gold)" },
     { n: "4", t: "SURVIVE", d: "The zone closes in six stages. Last one standing wins.", c: "var(--magenta)" },
@@ -174,18 +174,11 @@ function basics(input: Input): HTMLElement {
       h("div.cap", null, h("div.mouse"), h("div.d", null, "Aim + shoot · right click scopes")),
     )),
     h("div.group", null, h("div.panel-title", null, "Match flow"), h("div.flow", null, flow.map((f) => h("div.step", { style: { "--c": f.c } }, h("div.no", null, f.n), h("b", null, f.t), h("span", null, f.d))))),
-    h("div.group", null, h("div.panel-title", null, "Weapons (rarity adds damage and magazine size)"), h("div.scoring", null,
-      RARITY.map((r, i) => h(`div.score-chip${i === 3 ? ".gold" : ""}`, { style: { color: r.color } }, h("div.pl-n", null, r.name.toUpperCase()), h("div.pts", null, `×${r.damage.toFixed(2)}`))),
-    ), h("div.weapon-row", null, WEAPON_IDS.map((id) => {
+    h("div.group", null, h("div.panel-title", null, "Rarity: the glow color of a gun on the floor"), rarityChips(), h("div.weapon-row", null, WEAPON_IDS.map((id) => {
       const icon = weaponIcon(id, 1, 120, 44);
       return h("div.weapon-chip", null, h("img", { src: icon.toDataURL(), alt: "" }), h("span", null, WEAPONS[id].name));
     }))),
-    h("div.group", null, h("div.panel-title", null, "Survive"), h("div.tips", null,
-      h("div.tip", null, h("div.demo", null, h("span", { style: { fontSize: "2rem" } }, "🛡️")), h("h4", null, "SHIELDS + HEALS"), h("p", null, `Shield Cells absorb damage first. Hold ${kl("heal")} to bandage up or use a medkit: you move slowly and shooting cancels it.`)),
-      h("div.tip", null, h("div.demo", null, h("div.nebula"), coreCanvas(0, rem(2.6), { ghost: false })), h("h4", null, "HIDE AND FLANK"), h("p", null, "Walls cast shadows: you can't see around corners, and neither can they. Bushes hide you from anyone far away until you shoot.")),
-      h("div.tip", null, h("div.demo", null, h("span", { style: { fontSize: "2rem" } }, "💎")), h("h4", null, "PRISM SHARDS"), h("p", null, "Rare shards in crates and supply drops open the draft mid-match: a second power, or a swap.")),
-      h("div.tip", null, h("div.demo", null, coreCanvas(4, rem(2.6), { ghost: true }), h("div.lava")), h("h4", null, "GHOSTS HAUNT"), h("p", null, `Eliminated? Watch your killer or switch with the arrows. Every 10s drop lava (${kl("p1")}) or a slow field (${kl("p2")}) at your cursor.`)),
-    )),
+    h("div.group", null, h("div.panel-title", null, "Survive"), survivalTips(input)),
   );
 }
 
