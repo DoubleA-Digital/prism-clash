@@ -575,7 +575,7 @@ Everyone drops in with a **Pistol**. Everything else is on the floor, in crates,
 - **Supply drops** fall from the sky a few times per match (announced on the minimap) with purple and gold gear. Whoever gets there first wins the fight for it.
 
 ### 12.3 Maps with real terrain
-- One big map instead of the small polygon: about 6000 x 6000 units for up to 12 fighters (humans plus bots filling empty seats).
+- One big map instead of the small polygon: about 6000 x 6000 units for up to 10 fighters (humans plus bots filling empty seats).
 - **Two maps**, hand-built from reusable prefabs with seeded variation each match:
   - **Neon City**: buildings with doorways and rooms (the roof fades when you walk in), alleys, a plaza, fences, parked hover cars as cover.
   - **Crystal Wilds**: forest of bushes and rocks, a river that slows you, bridges, ruins, crystal caves.
@@ -616,7 +616,7 @@ Navigation grid and A* pathfinding around walls. Bots loot (go for better guns, 
 1. **Map engine**: rectangle and circle geometry, a spatial grid for collisions on a big map, line of sight and shadows, all terrain types, both maps, and neon-style terrain rendering.
 2. **Weapons and loot**: weapon definitions and rarity, firing patterns, reload, crates, floor loot, inventory, throwables, heals and armor, supply drops, death loot piles. Netcode for items, and the HUD for inventory and ammo.
 3. **Mini characters**: hero renderer, 8 heroes, animations, hero select in the lobby.
-4. **Match flow**: one long round, bot fill up to 12, zone retune, pre-match draft, in-match shard drafts, spectating, results.
+4. **Match flow**: one long round, bot fill up to 10, zone retune, pre-match draft, in-match shard drafts, spectating, results.
 5. **Powers pass**: adapt every power and ultimate to guns and walls, then retune.
 6. **Bots**: pathfinding, looting, cover, zone rotation.
 7. **Polish**: a distinct sound per weapon, hit feedback, how-to-play update, e2e screenshots and a full bot match test. Then push the branch.
@@ -627,4 +627,11 @@ Navigation grid and A* pathfinding around walls. Bots loot (go for better guns, 
 - **Line of sight**: walls, rocks and crystals block sight; cover, crates, cars and glass don't (bullets still stop). Smoke clouds block sight too. The server only sends players a viewer could see (with a small corner margin), and the client draws matching shadows.
 - **Prism Lance** is a hitscan beam traced on release (pierces players, bounces once off a wall, damage scales with charge), shown with short-lived beam effects. No projectile to predict, and it can't tunnel.
 - **Hands logic** (trigger, reload, swap, heal channel, throws) is a pure per-input-frame function shared by the server and client prediction, so predicted shots, ammo and timers match the server. Predicted bullet spread is a hash of the shot id, so the client draws the same pellets the server fires.
-- **Match**: one round; bots fill to 12; the zone has six stages that finish closing about 3:15 in; supply drops at 45, 95 and 145 seconds; a short victory beat, then results. Standings, between-round drafts and the final-blow replay are gone.
+- **Match**: one round; bots fill to 10; the zone has six stages that finish closing about 3:15 in; supply drops at 45, 95 and 145 seconds; a short victory beat, then results. Standings, between-round drafts and the final-blow replay are gone.
+
+### 12.10 Playtest round two (2026-10-19)
+- **Rooms of 10**: up to 10 humans per room and 10 fighters per match (bots fill the empty seats). All ten player colors are pickable; the five new ones (Orange #FF8A2B, Mint #2BFFC0, Pink #FFA6EC, Red #FF3B3B, Pearl #FFFFE0) each have their own colorblind marker (star, hex, ring, x, bowtie) and stay at a CIEDE2000 distance of 20+ from every other player and rarity color. The lobby shows ten compact seats in two columns.
+- **Leaving after you die**: an eliminated player can go back to the room's lobby while the match carries on (the server keeps their stats and placement and stops sending them snapshots); the lobby shows the match's alive count and clock, and afterwards your own placement and kills. The host can't start a new match until the current one ends. Practice leaves to the main menu. People who join mid-match wait in the lobby.
+- **Exit to the title screen**: a MENU button in the match HUD and Esc open a menu (Resume, Settings, How to play, Exit to main menu, and Back to room lobby when you're out). Leaving while alive asks first, and counts as a forfeit: you're eliminated where you stand, the last attacker gets the kill, your loot drops and your seat is freed. Nothing ever navigates the page away (the game runs inside a portal iframe).
+- **Less loot clutter**: about 23% fewer floor items (spot fill 0.85 to 0.66), crates drop 1.7 items on average (was 2), and ammo, heals, shield cells and same-type grenades dropped near a matching pile stack into it with a count.
+- **150 HP**: no single normal hit kills from full health. Heals scale with it (bandage 22, medkit 90), bot health thresholds scale with it, and ultimate charge per damage dropped 30% so ultimates come about as often as before.
