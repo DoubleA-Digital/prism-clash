@@ -59,6 +59,13 @@ export function newInventory(): Inventory {
   return { weapons: [{ id: "pistol", rarity: 0, mag: 12, reserve: 0 }, null], active: 0, throwable: null, throws: 0, bandages: 0, medkits: 0 };
 }
 
+/**
+ * World entities (projectiles, effects, loot) take ids from here up, so they never share an id
+ * with a fighter: human player ids count up from 1 and bots live in 1e6..2e6. Snapshots key
+ * every entity by id, so a clash would hide a player behind a loot item.
+ */
+export const ENTITY_ID_BASE = 1 << 21;
+
 export class World {
   readonly dt = 1 / NET.tickRate;
   tick = 0;
@@ -87,7 +94,7 @@ export class World {
   blasts: PendingBlast[] = [];
   /** Supply drops already announced (index into SUPPLY.times). */
   supplyIndex = 0;
-  private nextId = 1;
+  private nextId = ENTITY_ID_BASE;
   /** Which combos fired per player (stats). */
   comboLog: { by: number; name: string; stolen: boolean; tick: number }[] = [];
   /** Damage log for "Most Chaotic Moment" (tick, attacker, amount). */
