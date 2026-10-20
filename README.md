@@ -1,6 +1,6 @@
 # Prism Clash
 
-A neon top-down battle royale for 2–5 players in the browser. Draft wild powers between rounds, fight in a shrinking arena, and be the last one standing. Placement and kills earn points; first to 15 wins the match. Bots fill empty seats, so you can play a full match alone.
+A neon top-down looter-shooter battle royale in the browser. Twelve fighters (up to 5 humans, bots fill the rest) drop onto a big map with a pistol, loot weapons, shields, heals and grenades, draft wild powers, and fight until one is left standing. Bots fill empty seats, so you can play a full match alone.
 
 ## Play locally
 
@@ -9,22 +9,24 @@ pnpm install
 pnpm dev          # game server on :8787 + client on :5173
 ```
 Open <http://localhost:5173>, enter a name, then:
-- **Practice vs bots**: an instant 5-player match against 4 bots.
+- **Practice vs bots**: an instant 12-fighter match against 11 bots (`?map=crystalWilds` or `?map=neonCity` pins the map).
 - **Create room**: share the 5-letter code (or the **Copy invite link** button) with friends; each player joins from their own browser.
-
-Open two browser tabs to play against yourself.
 
 ## Controls
 
 | Action | Keyboard + mouse | Gamepad |
 |---|---|---|
-| Move | WASD | Left stick |
-| Aim | Mouse | Right stick |
-| Shoot (5-shot clip, reloads one at a time) | Left click | RT |
+| Move / aim | WASD / mouse | Left stick / right stick |
+| Shoot (the Prism Lance charges while held) | Left click | RT |
+| Scope (sniper) | Right click | LT |
+| Reload | R | B |
+| Pick up / swap weapon | F | X |
+| Weapon 1 / 2 / switch | 1 / 2 / mouse wheel | D-pad right |
+| Throw grenade | G | D-pad down |
+| Heal (hold) | H | D-pad up |
 | Dash (brief invincibility) | Space | A |
 | Powers | Q / E | LB / RB |
-| Prism Core 3rd power | F | X |
-| Ultimate (when the ring is full) | R | Y |
+| Ultimate (when the ring is full) | X | Y |
 | Scoreboard | Tab | — |
 | Ghost: switch spectate / drop lava / drop slow field | ← → or click / Q / E | — |
 
@@ -32,20 +34,20 @@ Every key can be rebound in **Settings**.
 
 ## How a match works
 
-1. Each player picks an **ultimate** (1 of 3) that they keep all match.
-2. Before each round, everyone **drafts a power** from 3 cards at the same time (4 cards if you're in last place). You hold two; a new pick replaces your older one. Round 1 drafts twice.
-3. The round: the safe zone starts closing after 30 s in 5 stages. Pickups spawn every 12 s: health, cooldown reset, ult charge, and the rare **Prism Core** (a 3rd power for the round). Purple **nebula clouds** hide you from distant enemies until you shoot. Knock enemies into walls for bonus damage.
-4. The last player alive wins the round. Points: 1st 5, 2nd 3, 3rd 2, 4th 1, 5th 0, plus 1 per kill. A slow-motion replay shows the final blow, then standings.
-5. Dead players become **ghosts**: spectate, and every 10 s drop a small lava puddle or slow field (marked with your color).
+1. Everyone picks an **ultimate** (1 of 3) and drafts a first **power** (1 of 3).
+2. One long round on **Neon City** (buildings with rooms and roofs, alleys, plaza, parking lots) or **Crystal Wilds** (a river with bridges, rocks, ruins, crystals, bushes). Each match uses a fresh seed, so layouts vary.
+3. Loot: Pistol, SMG, Assault Rifle, Shotgun, Sniper, Rocket Launcher, Prism Lance and Energy Blade in four rarities (common, rare, epic, legendary), plus Shield Cells, bandages, medkits, frag and smoke grenades and shock mines. Crates break open, barrels explode, glass shatters. Kills drop the whole loadout.
+4. Walls cast line-of-sight shadows and bushes hide you until you shoot. **Supply drops** fall a few times per match with epic and legendary gear, and rare **Prism Shards** open a mid-match power draft.
+5. The zone closes in six stages (a match lasts about 6 to 8 minutes) and its center moves every stage. Last one standing wins; results show placement, kills, damage and more.
+6. Dead players spectate their killer (or anyone alive) and can haunt as **ghosts**: every 10 s drop a small lava puddle or slow field.
 
 **18 powers:** Chrono Rewind, Singularity, Mirror Self, Portal Pair, Storm Tether, Time Bubble, Ricochet Prism, Phantom Mark, Hex Swap, Magnetar, Void Cloak, Molten Path, Boomerang Glaive, Gravity Flip, Bounty Beacon, Decoy Swarm, Shockwave Slam, Third-Party.
 **6 ultimates:** Meteor Rain, Overdrive, Rift Collapse, Echo Storm, Final Stand, Hunter's Eye.
-**6 combos** (with STOLEN COMBO! when you use someone else's effect): Prism Portal, Event Horizon Blade, Frozen Harvest, Lava Lock, Gravity Slam, Storm Gate.
 
 ## Debug tools
 
 - **F2**: network panel (ping, server tick, snapshot rate, bandwidth, prediction corrections) and a **network simulator** (latency, jitter, packet loss) to try bad connections on one machine.
-- **F1**: FPS/frame time, hitboxes. In a test room (open the game with `?test=1`, then create a room) it can grant any power or ultimate to any player.
+- **F1**: FPS/frame time, hitboxes. In a test room (open the game with `?test=1`, then create a room) it can grant any power or ultimate to any player, or a legendary weapon kit (**Loadout**).
 
 ## How it's built
 

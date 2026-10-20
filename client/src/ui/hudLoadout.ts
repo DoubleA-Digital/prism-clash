@@ -45,7 +45,8 @@ export function drawWeapons(ctx: CanvasRenderingContext2D, h: HudInput, u: numbe
     ctx.textAlign = "left";
     ctx.font = font(800, 11 * u, DISPLAY);
     ctx.fillStyle = col;
-    ctx.fillText(`${(RARITY[wpn.rarity]?.name ?? "").toUpperCase()} ${def.name.toUpperCase()}`.slice(0, 26), x + 38 * u, y + ch - 12 * u);
+    const reloading = active && me.reloadT > 0;
+    if (!reloading) ctx.fillText(`${(RARITY[wpn.rarity]?.name ?? "").toUpperCase()} ${def.name.toUpperCase()}`.slice(0, 26), x + 38 * u, y + ch - 12 * u);
     // Magazine / reserve
     ctx.textAlign = "right";
     if (def.kind === "blade") {
@@ -70,8 +71,8 @@ export function drawWeapons(ctx: CanvasRenderingContext2D, h: HudInput, u: numbe
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(x + 14 * u, y + ch - 5 * u, (cw - 28 * u) * p, 3 * u);
       ctx.font = font(800, 11 * u, DISPLAY);
-      ctx.textAlign = "right";
-      outlined(ctx, "RELOADING", x + cw - 14 * u, y + ch - 14 * u, "#ffffff", "rgba(5,4,13,0.85)", 3 * u);
+      ctx.textAlign = "left";
+      outlined(ctx, "RELOADING…", x + 38 * u, y + ch - 13 * u, "#ffffff", "rgba(5,4,13,0.85)", 3 * u);
     } else if (active && def.kind !== "blade" && wpn.mag === 0 && !def.infinite && wpn.reserve === 0) {
       ctx.font = font(800, 11 * u, DISPLAY);
       ctx.textAlign = "right";

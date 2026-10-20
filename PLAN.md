@@ -620,3 +620,11 @@ Navigation grid and A* pathfinding around walls. Bots loot (go for better guns, 
 5. **Powers pass**: adapt every power and ultimate to guns and walls, then retune.
 6. **Bots**: pathfinding, looting, cover, zone rotation.
 7. **Polish**: a distinct sound per weapon, hit feedback, how-to-play update, e2e screenshots and a full bot match test. Then push the branch.
+
+### 12.9 Implementation notes (phases 1, 2 and the core of 4)
+- **Maps** are generated from (map id, seed) on both server and clients (integer, RNG-only prefabs in `shared/src/sim/map/`), so only the id and seed go over the network. Destructibles (crates, barrels, glass, fences) sync their hp/broken state; damaged ones are always sent.
+- **Collision** uses a uniform grid; players are circles resolved against axis-aligned rects with sliding and sub-steps; bullets sweep as segments against rects expanded by their radius.
+- **Line of sight**: walls, rocks and crystals block sight; cover, crates, cars and glass don't (bullets still stop). Smoke clouds block sight too. The server only sends players a viewer could see (with a small corner margin), and the client draws matching shadows.
+- **Prism Lance** is a hitscan beam traced on release (pierces players, bounces once off a wall, damage scales with charge), shown with short-lived beam effects. No projectile to predict, and it can't tunnel.
+- **Hands logic** (trigger, reload, swap, heal channel, throws) is a pure per-input-frame function shared by the server and client prediction, so predicted shots, ammo and timers match the server. Predicted bullet spread is a hash of the shot id, so the client draws the same pellets the server fires.
+- **Match**: one round; bots fill to 12; the zone has six stages of about 6 to 7 minutes total; supply drops at 95, 190 and 285 seconds; a short victory beat, then results. Standings, between-round drafts and the final-blow replay are gone.

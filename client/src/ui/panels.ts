@@ -1,6 +1,6 @@
 // Dev panels: the F2 network panel (with the latency simulator) and the F1 debug panel.
 
-import { allPowers, allUlts, type PowerId, type UltId } from "@prism/shared";
+import { allPowers, allUlts, type DebugGrant } from "@prism/shared";
 import { session } from "../net/session";
 import { h } from "./dom";
 import { iconDataUrl } from "./icons";
@@ -60,7 +60,7 @@ export function debugPanel(getFps: () => { fps: number; frameMs: number; particl
       h(`button${target.id === p.id ? ".on" : ""}`, { onclick: () => { target.id = p.id; renderPlayers(); } }, p.name)));
   };
   renderPlayers();
-  const grant = (id: PowerId | UltId | "fullUlt" | "heal") => () => session.debugGrant(target.id, id);
+  const grant = (id: DebugGrant) => () => session.debugGrant(target.id, id);
   const test = session.room?.settings.testRoom;
   const el = h(
     "div.debugpanel.panel",
@@ -74,7 +74,7 @@ export function debugPanel(getFps: () => { fps: number; frameMs: number; particl
         h("div.grid", null, allPowers().map((p) => h("button", { onclick: grant(p.id), title: p.name }, h("img", { src: iconDataUrl(p.id, 40), alt: p.name })))),
         h("div.label", { style: { margin: "8px 0" } }, "Ultimates (granted full)"),
         h("div.grid", null, allUlts().map((u) => h("button", { onclick: grant(u.id), title: u.name }, h("img", { src: iconDataUrl(u.id, 40), alt: u.name })))),
-        h("div.row", { style: { marginTop: "8px" } }, h("button.btn.small", { onclick: grant("fullUlt") }, "Full ult"), h("button.btn.small", { onclick: grant("heal") }, "Heal")))
+        h("div.row", { style: { marginTop: "8px" } }, h("button.btn.small", { onclick: grant("fullUlt") }, "Full ult"), h("button.btn.small", { onclick: grant("heal") }, "Heal"), h("button.btn.small", { onclick: grant("loadout") }, "Loadout")))
       : h("div.hint", null, "Granting powers works in test rooms: open the game with ?test=1 and create a room."),
   );
   const update = () => {

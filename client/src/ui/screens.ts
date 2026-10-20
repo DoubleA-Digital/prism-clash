@@ -3,6 +3,7 @@
 // A screen is rebuilt only when its structural key changes; data changes call its update() hook,
 // so animations never replay and typing/focus are never interrupted.
 
+import { isMapId } from "@prism/shared";
 import { audio } from "../audio/audio";
 import type { Game } from "../game";
 import { session } from "../net/session";
@@ -98,7 +99,9 @@ export class Screens {
     // Practice: once our fresh room exists and we're host, start right away.
     if (this.autoStart && session.phase === "lobby" && session.room && session.room.hostId === session.myId) {
       this.autoStart = false;
-      session.lobbySet({ fillBots: true });
+      // ?map=crystalWilds (or neonCity) pins the practice map, handy for testing.
+      const map = new URLSearchParams(location.search).get("map");
+      session.lobbySet(isMapId(map) ? { fillBots: true, map } : { fillBots: true });
       setTimeout(() => session.start(), 250);
     }
     const key = this.key();

@@ -371,7 +371,7 @@ export const FX = {
   camLead: 0.18,
   camStiffness: 9,
   /** World units visible vertically at 1x; the camera scales to fit the window. */
-  viewHeight: 1400,
+  viewHeight: 1250,
   /** Right-click with a sniper: the camera shows this much more. */
   scopeZoom: 1.55,
   minimapRange: 1100,

@@ -30,7 +30,7 @@ export function drawWeapon(ctx: CanvasRenderingContext2D, id: WeaponId, rarity: 
   ctx.save();
   ctx.scale(scale, scale);
   ctx.lineJoin = "round";
-  ctx.fillStyle = "#151830";
+  ctx.fillStyle = "#353c70";
   ctx.strokeStyle = "rgba(5,4,13,0.95)";
   ctx.lineWidth = 3;
   for (const [x, y, w, h] of s.body) {
@@ -39,7 +39,7 @@ export function drawWeapon(ctx: CanvasRenderingContext2D, id: WeaponId, rarity: 
     ctx.stroke();
     ctx.fill();
   }
-  ctx.fillStyle = "#2b3160";
+  ctx.fillStyle = "#5a64a8";
   for (const [x, y, w] of s.body) ctx.fillRect(x + 1.5, y + 1.2, Math.max(0, w - 3), 1.6);
   if (id === "blade") {
     // An energy edge that hums.
