@@ -178,7 +178,7 @@ export const LOOT = {
 
 export const SUPPLY = {
   /** Match seconds when supply drops are announced. */
-  times: [95, 190, 285],
+  times: [45, 95, 145],
   /** Seconds from announcement to landing. */
   fallTime: 11,
   /** Rarity weights for the guns inside (epic, legendary). */
@@ -286,15 +286,16 @@ export const MATCH = {
 } as const;
 
 export const ZONE = {
-  startDelay: 60,
+  /** Matches last 2-4 minutes: the last circle finishes closing about 3:15 in. */
+  startDelay: 25,
   /** Each stage: warn, then shrink over `shrink` seconds to `radius`. The center moves each stage. */
   stages: [
-    { warn: 45, shrink: 35, radius: 2500, dps: 2 },
-    { warn: 38, shrink: 30, radius: 1750, dps: 4 },
-    { warn: 32, shrink: 25, radius: 1150, dps: 7 },
-    { warn: 26, shrink: 20, radius: 680, dps: 11 },
-    { warn: 22, shrink: 16, radius: 320, dps: 16 },
-    { warn: 18, shrink: 14, radius: 70, dps: 24 },
+    { warn: 22, shrink: 18, radius: 2500, dps: 3 },
+    { warn: 18, shrink: 16, radius: 1750, dps: 5 },
+    { warn: 16, shrink: 14, radius: 1150, dps: 8 },
+    { warn: 14, shrink: 12, radius: 680, dps: 12 },
+    { warn: 12, shrink: 10, radius: 320, dps: 18 },
+    { warn: 10, shrink: 9, radius: 70, dps: 28 },
   ],
   /** Stage centers stay this far inside the map edge. */
   edgeMargin: 300,
@@ -460,7 +461,7 @@ export const BOTS = {
     burstDamage: 28,
     pursueSeconds: 3.5,
     /** Someone this close (or inside our gun's range, if shorter) is a fight whether we like it or not. */
-    engageRange: 520,
+    engageRange: 440,
     /** Fights they'll take: win chance below this makes them disengage. */
     fleeBelow: 0.3,
     /** Bonus win chance against someone already fighting another player. */
@@ -508,8 +509,8 @@ export const BOTS = {
    * Opening looting phase: for this long, picking a fight with someone far away who hasn't
    * engaged us is scaled by earlyAppetite (so lobbies don't wipe out before anyone has a gun).
    */
-  lootPhaseSeconds: 45,
-  earlyAppetite: 0.15,
+  lootPhaseSeconds: 65,
+  earlyAppetite: 0.03,
   /** Score bonus that keeps the current state (stops flip-flopping). */
   stickiness: 0.12,
   names: ["NOVA", "VEX", "ORBIT", "KILO", "ZEPHYR", "QUASAR", "HALO", "RIFT", "ECHO", "PULSE", "ION", "AXIOM", "JINX", "TALON"],

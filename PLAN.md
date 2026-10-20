@@ -590,7 +590,7 @@ Everyone drops in with a **Pistol**. Everything else is on the floor, in crates,
 ### 12.4 One long round
 - **Before the match**: pick your ultimate and draft your first power, using the existing screens.
 - **During the match**: rare **Prism Shards** (in crates and supply drops) open the draft cards as an in-game overlay, without pausing. You get a second power, or upgrade or replace one.
-- The zone shrinks in 6 stages, so a match lasts about 6 to 8 minutes.
+- The zone shrinks in 6 stages, so a match lasts about 2 to 4 minutes (the last circle closes about 3:15 in).
 - When you die, you spectate your killer (or haunt as a ghost, as in v1). You can leave or wait for the match to end.
 - **Results**: placement plus kills, on the same podium screen. Rematch drops everyone into a fresh map seed.
 - First to 15 points and between-round standings are removed.
@@ -627,4 +627,4 @@ Navigation grid and A* pathfinding around walls. Bots loot (go for better guns, 
 - **Line of sight**: walls, rocks and crystals block sight; cover, crates, cars and glass don't (bullets still stop). Smoke clouds block sight too. The server only sends players a viewer could see (with a small corner margin), and the client draws matching shadows.
 - **Prism Lance** is a hitscan beam traced on release (pierces players, bounces once off a wall, damage scales with charge), shown with short-lived beam effects. No projectile to predict, and it can't tunnel.
 - **Hands logic** (trigger, reload, swap, heal channel, throws) is a pure per-input-frame function shared by the server and client prediction, so predicted shots, ammo and timers match the server. Predicted bullet spread is a hash of the shot id, so the client draws the same pellets the server fires.
-- **Match**: one round; bots fill to 12; the zone has six stages of about 6 to 7 minutes total; supply drops at 95, 190 and 285 seconds; a short victory beat, then results. Standings, between-round drafts and the final-blow replay are gone.
+- **Match**: one round; bots fill to 12; the zone has six stages that finish closing about 3:15 in; supply drops at 45, 95 and 145 seconds; a short victory beat, then results. Standings, between-round drafts and the final-blow replay are gone.

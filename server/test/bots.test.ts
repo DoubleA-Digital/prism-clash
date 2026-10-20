@@ -3,7 +3,7 @@
 // personalities, power tactics with the new API, and small end-to-end scenes on the test yard.
 import { describe, expect, test } from "vitest";
 import {
-  addBush, addSolid, BOTS, createLoot, newWeapon, Rng, World, ZONE,
+  addBush, addSolid, BOTS, createLoot, FX, newWeapon, Rng, World, ZONE,
   type InputFrame, type Player, type PowerId,
 } from "@prism/shared";
 import { createBrain } from "../src/bots/brain";
@@ -79,10 +79,10 @@ describe("perception is honest", () => {
     expect(per.contacts.get(2)?.visible ?? false).toBe(false);
     // Out of the bush but straight below, past the screen's half height.
     foe.x = -300;
-    foe.y = 900;
+    foe.y = FX.viewHeight;
     per.look(w, me);
     expect(per.contacts.get(2)?.visible ?? false).toBe(false);
-    foe.y = 500;
+    foe.y = FX.viewHeight * 0.4;
     per.look(w, me);
     expect(per.contacts.get(2)?.visible).toBe(true);
   });

@@ -341,8 +341,8 @@ describe("match systems", () => {
     expect(centers.length).toBe(ZONE.stages.length);
     expect(w.zone.r).toBeCloseTo(ZONE.stages[ZONE.stages.length - 1]!.radius, 0);
     const minutes = total / 30 / 60;
-    expect(minutes).toBeGreaterThan(5.5);
-    expect(minutes).toBeLessThan(8);
+    expect(minutes).toBeGreaterThan(2.5);
+    expect(minutes).toBeLessThan(4);
   });
 
   test("actFrame is pure: replaying the same frames gives the same state (client prediction)", () => {
