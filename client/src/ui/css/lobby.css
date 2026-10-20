@@ -93,3 +93,25 @@
 .me-panel .color-sec { margin-top: 0.8rem; }
 .me-panel .color-sec > .label { display: block; margin-bottom: 0.1rem; }
 .me-panel .color-sec .swatches { margin: 0.4rem 0 1rem; }
+/* Waiting out a match in the lobby: the live match panel, your last result, locked picks. */
+.match-live { position: relative; padding: 0.9rem 1.2rem; border-radius: 1.2rem; background: linear-gradient(120deg, rgba(255, 46, 136, 0.16), rgba(0, 240, 255, 0.08)); border: 1px solid rgba(255, 46, 136, 0.45); box-shadow: 0 0 1.8rem rgba(255, 46, 136, 0.18); animation: rise 0.4s var(--ease) both; }
+.match-live .ml-k { display: flex; align-items: center; gap: 0.55rem; font-family: var(--display); font-weight: 800; font-size: 0.74rem; letter-spacing: 0.22em; color: #ffb3d4; }
+.match-live .live-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--magenta, #ff2e88); box-shadow: 0 0 0.8rem #ff2e88; animation: blink 1.1s ease-in-out infinite; }
+.match-live .ml-t { margin-left: auto; font-family: var(--mono); font-size: 0.95rem; letter-spacing: 0.04em; color: #fff; }
+.match-live .ml-v { margin-top: 0.3rem; font-weight: 600; color: var(--dim); font-size: 1rem; }
+.match-live .ml-v b { font-family: var(--mono); font-size: 1.9rem; color: #fff; text-shadow: 0 0 1rem rgba(255, 46, 136, 0.6); }
+.match-live.over { background: linear-gradient(120deg, rgba(255, 200, 61, 0.16), rgba(169, 112, 255, 0.08)); border-color: rgba(255, 200, 61, 0.45); box-shadow: 0 0 1.8rem rgba(255, 200, 61, 0.15); }
+.match-live.over .ml-k { color: var(--gold); }
+.match-live.over .ml-v { margin-top: 0.2rem; font-size: 0.95rem; }
+.last-result { padding: 0.9rem 1.2rem 1rem; animation: rise 0.4s var(--ease) both; }
+.last-result .panel-title { margin-bottom: 0.5rem; }
+.last-result .lr-row { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.last-result .lr-place { font-family: var(--display); font-weight: 900; font-size: 1.9rem; line-height: 1; color: #fff; text-shadow: 0 0 1.2rem rgba(0, 240, 255, 0.5); }
+.last-result .lr-place small { margin-left: 0.35rem; font-family: var(--ui); font-weight: 700; font-size: 0.85rem; color: var(--dim); text-shadow: none; }
+.last-result .lr-kills { font-weight: 700; color: var(--dim); }
+.last-result .lr-kills b { font-family: var(--mono); font-size: 1.25rem; color: var(--gold); }
+.last-result .lr-win { flex-basis: 100%; font-size: 0.92rem; color: var(--dim); }
+.last-result .lr-win b { color: #fff; }
+.last-result.won .lr-place { color: var(--gold); text-shadow: 0 0 1.4rem rgba(255, 200, 61, 0.7); }
+.slot .meta .tag.inmatch { background: rgba(255, 46, 136, 0.16); color: #ff8fc0; }
+.me-panel.live-lock .hero-picker, .me-panel.live-lock .swatches { opacity: 0.5; pointer-events: none; filter: saturate(0.6); }

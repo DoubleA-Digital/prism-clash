@@ -1,5 +1,6 @@
 // Screen router: shows the right DOM screen for the session phase, plus overlays
-// (settings, how-to, Tab scoreboard, F1/F2 panels, spectator bar, shard draft, toasts).
+// (settings, how-to, the in-match Esc menu, Tab scoreboard, F1/F2 panels, spectator bar,
+// shard draft, toasts).
 // A screen is rebuilt only when its structural key changes; data changes call its update() hook,
 // so animations never replay and typing/focus are never interrupted.
 
@@ -14,7 +15,7 @@ import { history } from "./history";
 import { lobbyScreen } from "./lobby";
 import { menuScreen } from "./menu";
 import { howToModal, settingsModal } from "./modals";
-import { spectateBar } from "./overlays";
+import { escMenu, spectateBar, type LeaveAction } from "./overlays";
 import { debugPanel, netPanel } from "./panels";
 import { draftScreen, shardOverlay, ultScreen } from "./picks";
 import { matchEndScreen, scoreboard } from "./results";
@@ -33,6 +34,8 @@ export class Screens {
   private board: ReturnType<typeof scoreboard> | null = null;
   private boardAt = 0;
   private spectate: ReturnType<typeof spectateBar> | null = null;
+  /** The Esc menu is the open modal (and whether it was built for a dead player). */
+  private esc: { el: HTMLElement; dead: boolean } | null = null;
   private shard: ReturnType<typeof shardOverlay> | null = null;
   private shardKey = "";
   private autoStart = false;
@@ -94,7 +97,7 @@ export class Screens {
 
   private sync() {
     // Solo practice: a rematch drops straight into the next match.
-    if (this.prevPhase === "matchEnd" && session.phase === "lobby" && session.room && session.room.players.filter((p) => !p.bot).length === 1) this.autoStart = true;
+    if (this.prevPhase === "matchEnd" && session.phase === "lobby" && session.practice && session.room) this.autoStart = true;
     this.prevPhase = session.phase;
     // Practice: once our fresh room exists and we're host, start right away.
     if (this.autoStart && session.phase === "lobby" && session.room && session.room.hostId === session.myId) {
@@ -137,7 +140,7 @@ export class Screens {
             openHowTo: () => this.openModal(howToModal(() => this.closeModal(), this.game.input)),
             practice: () => {
               this.autoStart = true;
-              session.createRoom(new URLSearchParams(location.search).has("test"));
+              session.createRoom(new URLSearchParams(location.search).has("test"), true);
             },
           },
           this.game.input,
@@ -168,9 +171,46 @@ export class Screens {
     el.querySelector<HTMLElement>(".tab.on, [data-nav]")?.focus({ preventScroll: true });
   }
 
+  /** Eliminated and watching (the match view is up but you're not in it). */
+  private isDead(): boolean {
+    return !!(session.view && !session.view.me && session.view.latest);
+  }
+
+  /** Leaving the match: practice ends at the main menu; online, the eliminated go back to the
+   *  room's lobby (the match carries on) and anyone still alive can only quit the room. */
+  private leaveAction(): LeaveAction {
+    const go = (f: () => void) => () => {
+      this.closeModal();
+      f();
+    };
+    if (session.practice) return { label: "Back to menu", run: go(() => session.leave()) };
+    if (this.isDead()) return { label: "Back to lobby", run: go(() => session.leaveMatch()) };
+    return { label: "Leave room", run: go(() => session.leave()) };
+  }
+
+  private openEscMenu() {
+    const dead = this.isDead();
+    const leave = this.leaveAction();
+    const hint = session.practice
+      ? "Ends this practice match."
+      : dead
+        ? "The match carries on without you. Your placement and kills show in the lobby."
+        : "You're still in the fight: leaving the room forfeits the match.";
+    const el = escMenu({
+      leave,
+      leaveHint: hint,
+      resume: () => this.closeModal(),
+      settings: () => this.openModal(settingsModal(this.game.input, () => this.closeModal())),
+      howTo: () => this.openModal(howToModal(() => this.closeModal(), this.game.input)),
+    });
+    this.openModal(el);
+    this.esc = { el, dead };
+  }
+
   private closeModal() {
     this.modal?.remove();
     this.modal = null;
+    this.esc = null;
     this.game.input.capture = null;
   }
 
@@ -178,6 +218,12 @@ export class Screens {
     if (e.code === "Escape" && this.modal) {
       audio.sfx("uiBack", 0, 0, { positional: false });
       this.closeModal();
+      return;
+    }
+    if (e.code === "Escape" && (session.phase === "round" || session.phase === "countdown") && !this.game.input.capture) {
+      e.preventDefault();
+      audio.sfx("uiClick", 0, 0, { positional: false });
+      this.openEscMenu();
       return;
     }
     if (e.code === "F2") {
@@ -243,13 +289,18 @@ export class Screens {
     const dead = inRound && session.view && !session.view.me && session.view.latest;
     if (dead) {
       if (!this.spectate) {
-        this.spectate = spectateBar();
+        this.spectate = spectateBar(this.leaveAction());
         this.root.append(this.spectate.el);
       }
       this.spectate.set(g.spectating(), g.hauntCooldown(), keyLabel(g.input.binds.p1), keyLabel(g.input.binds.p2));
     } else if (this.spectate) {
       this.spectate.el.remove();
       this.spectate = null;
+    }
+    // The Esc menu follows the match: gone when it ends, rebuilt if you're eliminated meanwhile.
+    if (this.esc) {
+      if (session.phase !== "round" && session.phase !== "countdown") this.closeModal();
+      else if (this.esc.dead !== this.isDead()) this.openEscMenu();
     }
     // In-match Prism Shard draft: the card overlay, while the game keeps running.
     const key = inRound && session.shard ? session.shard.options.join() : "";

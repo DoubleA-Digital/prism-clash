@@ -82,7 +82,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .pcard span { font-size: 0.95rem; color: #c5c9ef; line-height: 1.25; }
 
 /* Gameplay overlays */
-.spectate-bar { position: absolute; bottom: 1.8rem; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.7rem 1.6rem 0.8rem; border-radius: 1.4rem; text-align: center; max-width: min(34rem, 60vw); background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 0 2rem rgba(0, 0, 0, 0.5); pointer-events: none; animation: rise 0.4s var(--ease) both; }
+.spectate-bar { position: absolute; bottom: 1.8rem; left: 0; right: 0; width: max-content; margin-inline: auto; display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.7rem 1.6rem 0.8rem; border-radius: 1.4rem; text-align: center; max-width: min(34rem, 60vw); background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 0 2rem rgba(0, 0, 0, 0.5); pointer-events: none; animation: rise 0.4s var(--ease) both; }
 .spectate-bar .who { font-family: var(--display); font-weight: 800; font-size: 1rem; letter-spacing: 0.08em; }
 .spectate-bar .who small { display: block; font-family: var(--ui); font-size: 0.7rem; letter-spacing: 0.3em; color: var(--dim); }
 .spectate-bar .keys { color: var(--dim); font-weight: 600; font-size: 0.95rem; }
@@ -116,3 +116,13 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .rarity-chips .score-chip.rarity .pl-n { color: var(--rc); }
 .rarity-chips .score-chip.rarity .pts { color: var(--rc); font-size: 1.35rem; text-shadow: 0 0 1rem color-mix(in srgb, var(--rc) 55%, transparent); }
 .rarity-chips .score-chip.rarity .sub { font-family: var(--ui); font-weight: 600; font-size: 0.78rem; color: var(--dim); }
+/* Leaving after you're eliminated: the button in the spectator pill, and the Esc menu. */
+.spectate-bar .leave-row { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.2rem; pointer-events: auto; }
+.spectate-bar .leave-btn { min-width: 11rem; }
+.spectate-bar .or { color: var(--dim); font-weight: 600; font-size: 0.9rem; }
+.esc-menu { width: min(26rem, 92vw); }
+.esc-body { display: flex; flex-direction: column; gap: 0.7rem; padding: 1.2rem 1.4rem 1.3rem; }
+.esc-body .esc-sep { height: 1px; margin: 0.3rem 0; background: var(--line-soft); }
+.esc-body .esc-leave { color: #ffd1e6; border-color: rgba(255, 46, 136, 0.45); }
+.esc-body .esc-leave:hover, .esc-body .esc-leave:focus { box-shadow: 0 0 1.4rem rgba(255, 46, 136, 0.45); }
+.esc-body .hint { text-align: center; font-size: 0.9rem; }

@@ -22,6 +22,9 @@ export const C2S = {
   rematch: 13,
   debugGrant: 14,
   leave: 15,
+  /** An eliminated player (or a results watcher) goes back to the room's lobby screen while
+   *  the match carries on for everyone else. */
+  leaveMatch: 16,
 } as const;
 
 export const S2C = {
@@ -54,6 +57,16 @@ export interface LobbyPlayer {
   bot: boolean;
   connected: boolean;
   host: boolean;
+  /** On the lobby screen while a match runs: left after being eliminated, or joined mid-match. */
+  inLobby: boolean;
+}
+
+/** How the running match is going, for the people waiting in the lobby. */
+export interface MatchProgress {
+  alive: number;
+  fighters: number;
+  /** Seconds since the drop (0 before it). */
+  elapsed: number;
 }
 
 export interface RoomSettings {
@@ -70,13 +83,15 @@ export interface RoomState {
   players: LobbyPlayer[];
   settings: RoomSettings;
   phase: Phase;
+  /** Set while a match is being picked for or played (null in the lobby and on the results). */
+  match: MatchProgress | null;
 }
 
 // ---- client -> server ----------------------------------------------------------------
 
 /** Test-room grants: a power or ultimate, or a helper (shard draft, jump into a building or
- *  next to the nearest enemy) for trying systems quickly. */
-export type DebugGrant = PowerId | UltId | "fullUlt" | "heal" | "loadout" | "shard" | "toBuilding" | "toFight";
+ *  next to the nearest enemy, or be eliminated on the spot) for trying systems quickly. */
+export type DebugGrant = PowerId | UltId | "fullUlt" | "heal" | "loadout" | "shard" | "toBuilding" | "toFight" | "die";
 
 export type ClientMsg =
   | { type: typeof C2S.hello; name: string; token: string | null; version: number }
@@ -93,7 +108,8 @@ export type ClientMsg =
   | { type: typeof C2S.ping; t: number; rtt: number }
   | { type: typeof C2S.rematch }
   | { type: typeof C2S.debugGrant; playerId: number; power: DebugGrant }
-  | { type: typeof C2S.leave };
+  | { type: typeof C2S.leave }
+  | { type: typeof C2S.leaveMatch };
 
 /** One input frame on the wire: [seq, mx*127, my*127, aimQ, buttons, pressed, dtMs, shotId]. */
 export type InputWire = [number, number, number, number, number, number, number, number];

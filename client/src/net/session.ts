@@ -4,7 +4,7 @@
 
 import {
   C2S, DEFAULT_HERO, inputToWire, isHeroId, NET, S2C,
-  type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type Phase,
+  type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type LobbyPlayer, type MapId, type Phase,
   type PlayerMatchStats, type PowerId, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { NetView } from "./netview";
@@ -14,6 +14,14 @@ export interface MatchEndInfo {
   winnerId: number;
   stats: PlayerMatchStats[];
   chaosMoment: { playerId: number; damage: number } | null;
+}
+
+/** Your own line from the last match's results (shown in the lobby, e.g. after leaving early). */
+export interface MyResult {
+  place: number;
+  kills: number;
+  fighters: number;
+  winnerId: number;
 }
 
 export interface ShardOffer {
@@ -47,6 +55,9 @@ export class Session {
   myPick: number | null = null;
   shard: ShardOffer | null = null;
   matchEnd: MatchEndInfo | null = null;
+  lastResult: MyResult | null = null;
+  /** A solo practice session (leaving goes back to the main menu). */
+  practice = false;
   rtt = 0;
   lastError: string | null = null;
   connected = false;
@@ -58,6 +69,8 @@ export class Session {
   private unsent: InputFrame[] = [];
   private lastInputSend = 0;
   private pendingJoin: { create: boolean; testRoom: boolean; code: string } | null = null;
+  /** Everyone seen in the room this match, so results still name players who left. */
+  private known = new Map<number, LobbyPlayer>();
 
   constructor() {
     try {
@@ -123,14 +136,16 @@ export class Session {
     if (this.room && this.room.phase === "lobby") this.lobbySet({ hero: id });
   }
 
-  createRoom(testRoom = false) {
+  createRoom(testRoom = false, practice = false) {
     this.lastError = null;
+    this.practice = practice;
     this.pendingJoin = { create: true, testRoom, code: "" };
     this.ensureHello();
   }
 
   joinRoom(code: string) {
     this.lastError = null;
+    this.practice = false;
     this.pendingJoin = { create: false, testRoom: false, code: code.toUpperCase() };
     this.ensureHello();
   }
@@ -153,7 +168,14 @@ export class Session {
     this.room = null;
     this.phase = "menu";
     this.view = null;
+    this.practice = false;
+    this.lastResult = null;
     this.changed();
+  }
+
+  /** Eliminated (or done with the results): back to the room's lobby while the match goes on. */
+  leaveMatch() {
+    this.conn.send({ type: C2S.leaveMatch });
   }
 
   lobbySet(s: { color?: number; hero?: HeroId; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; map?: MapId | "auto"; name?: string }) {
@@ -226,16 +248,20 @@ export class Session {
     return Math.max(0, (this.phaseEndsAt - now) / 1000);
   }
 
+  private player(id: number): LobbyPlayer | undefined {
+    return this.room?.players.find((p) => p.id === id) ?? this.known.get(id);
+  }
+
   playerName(id: number): string {
-    return this.room?.players.find((p) => p.id === id)?.name ?? "???";
+    return this.player(id)?.name ?? "???";
   }
 
   playerColor(id: number): number {
-    return this.room?.players.find((p) => p.id === id)?.color ?? 0;
+    return this.player(id)?.color ?? 0;
   }
 
   playerHero(id: number): HeroId {
-    return this.room?.players.find((p) => p.id === id)?.hero ?? DEFAULT_HERO;
+    return this.player(id)?.hero ?? DEFAULT_HERO;
   }
 
   private onMessage(m: ServerMsg) {
@@ -261,7 +287,8 @@ export class Session {
         // A fresh room starts everyone on the default hero: bring your remembered pick along.
         const me = m.room.players.find((p) => p.id === this.myId);
         if (joined && me && me.hero !== this.hero && m.room.phase === "lobby") this.lobbySet({ hero: this.hero });
-        if (this.phase === "menu") this.phase = m.room.phase;
+        for (const p of m.room.players) this.known.set(p.id, p);
+        if (this.phase === "menu") this.phase = me?.inLobby ? "lobby" : m.room.phase;
         break;
       }
       case S2C.error:
@@ -296,6 +323,7 @@ export class Session {
         return; // hot path: no UI notify
       case S2C.matchEnd:
         this.matchEnd = { winnerId: m.winnerId, stats: m.stats, chaosMoment: m.chaosMoment };
+        this.lastResult = myResult(m.stats, this.myId, m.winnerId);
         break;
       default:
         break;
@@ -323,9 +351,18 @@ export class Session {
       this.view = null;
       this.matchEnd = null;
     }
-    if (m.phase === "ultSelect") this.matchEnd = null;
+    if (m.phase === "ultSelect") {
+      this.matchEnd = null;
+      this.lastResult = null;
+      this.known.clear();
+    }
     if (prev !== m.phase) this.myPick = null;
   }
+}
+
+function myResult(stats: PlayerMatchStats[], myId: number, winnerId: number): MyResult | null {
+  const mine = stats.find((s) => s.playerId === myId);
+  return mine ? { place: mine.place, kills: mine.kills, fighters: stats.length, winnerId } : null;
 }
 
 export const session = new Session();

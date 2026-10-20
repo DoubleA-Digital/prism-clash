@@ -63,7 +63,8 @@ export function menuScreen(actions: MenuActions, input: Input): Built {
     return n;
   };
   const create = () => {
-    if (needName()) session.createRoom();
+    // ?test=1 makes a test room (F1 grants), like practice does.
+    if (needName()) session.createRoom(new URLSearchParams(location.search).has("test"));
   };
   const join = () => {
     if (!needName()) return;
