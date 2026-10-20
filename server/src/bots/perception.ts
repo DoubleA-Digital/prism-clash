@@ -4,7 +4,7 @@
 // Hearing: gunshots, explosions, throws and blade swings within range give a fuzzy position.
 // Getting shot reveals roughly where it came from. Nothing else: no wallhacks.
 
-import { activeWeapon, BOTS, FX, type GameEvent, type Player, type Rng, type WeaponId, type World } from "@prism/shared";
+import { activeWeapon, BOTS, FX, PLAYER, type GameEvent, type Player, type Rng, type WeaponId, type World } from "@prism/shared";
 
 const P = BOTS.perception;
 
@@ -68,7 +68,7 @@ export class Perception {
   private contact(id: number): Contact {
     let c = this.contacts.get(id);
     if (!c) {
-      c = { id, x: 0, y: 0, vx: 0, vy: 0, visible: false, seenAt: -Infinity, heardAt: -Infinity, noticeAt: Infinity, hp: 100, armor: 0, weapon: "pistol", rarity: 0, hitUsAt: -99 };
+      c = { id, x: 0, y: 0, vx: 0, vy: 0, visible: false, seenAt: -Infinity, heardAt: -Infinity, noticeAt: Infinity, hp: PLAYER.maxHp, armor: 0, weapon: "pistol", rarity: 0, hitUsAt: -99 };
       this.contacts.set(id, c);
     }
     return c;

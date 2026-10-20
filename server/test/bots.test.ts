@@ -3,7 +3,7 @@
 // personalities, power tactics with the new API, and small end-to-end scenes on the test yard.
 import { describe, expect, test } from "vitest";
 import {
-  addBush, addSolid, BOTS, createLoot, FX, newWeapon, Rng, World, ZONE,
+  addBush, addSolid, BOTS, createLoot, FX, newWeapon, PLAYER, Rng, World, ZONE,
   type InputFrame, type Player, type PowerId,
 } from "@prism/shared";
 import { createBrain } from "../src/bots/brain";
@@ -45,7 +45,7 @@ const profile = makeProfile("normal", new Rng(1), "looter");
 
 function situation(o: Partial<Situation>): Situation {
   return {
-    hp: 100, armor: 0, canHeal: false, quiet: 10, quietNeeded: 2, target: null, hitRecently: false, lootValue: 0, lootDist: Infinity,
+    hp: PLAYER.maxHp, armor: 0, canHeal: false, quiet: 10, quietNeeded: 2, target: null, hitRecently: false, lootValue: 0, lootDist: Infinity,
     crateDist: Infinity, armed: 0.6, zoneOutside: false, zonePressure: 0, supplyDist: Infinity, noiseDist: Infinity, noiseAge: Infinity,
     ambushSpot: false, ambushReady: false, lateGame: false, early: false, current: "roam", ...o,
   };
@@ -53,7 +53,7 @@ function situation(o: Partial<Situation>): Situation {
 
 function contact(o: Partial<Contact>): Contact {
   return {
-    id: 2, x: 0, y: 0, vx: 0, vy: 0, visible: true, seenAt: 0, heardAt: -Infinity, noticeAt: 0, hp: 100, armor: 0, weapon: "pistol", rarity: 0, hitUsAt: -99, ...o,
+    id: 2, x: 0, y: 0, vx: 0, vy: 0, visible: true, seenAt: 0, heardAt: -Infinity, noticeAt: 0, hp: PLAYER.maxHp, armor: 0, weapon: "pistol", rarity: 0, hitUsAt: -99, ...o,
   };
 }
 
@@ -237,7 +237,7 @@ describe("bots in action", () => {
     const brains = new Map([[1, new SmartBrain("hard", 7, "aggressive")]]);
     run(w, brains, 2);
     expect(w.stat(1).shots).toBe(0);
-    expect(foe.hp).toBe(100);
+    expect(foe.hp).toBe(PLAYER.maxHp);
     wall.dead = true;
     run(w, brains, 3);
     expect(w.stat(1).shots).toBeGreaterThan(0);

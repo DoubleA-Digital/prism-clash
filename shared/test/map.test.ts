@@ -2,7 +2,7 @@
 // swept bullets (no tunneling), line of sight, water, bushes and spawn points.
 import { describe, expect, test } from "vitest";
 import {
-  addBush, addSolid, buildMap, BTN, canSeePoint, circleBlocked, inWater, movePlayer, PLAY_MAPS, resolveCircle, segRect, sweepSolids, visionBlocked,
+  addBush, addSolid, buildMap, BTN, canSeePoint, circleBlocked, inWater, MATCH, movePlayer, PLAY_MAPS, resolveCircle, segRect, sweepSolids, visionBlocked,
   WEAPONS, World, type InputFrame, type Player,
 } from "@prism/shared";
 
@@ -36,7 +36,7 @@ describe("map generation", () => {
     test(`${id}: spawns are spread out and never inside geometry or water`, () => {
       for (const seed of [1, 2, 3]) {
         const m = buildMap(id, seed);
-        expect(m.spawns.length).toBe(12);
+        expect(m.spawns.length).toBe(MATCH.fighters);
         for (const s of m.spawns) {
           expect(circleBlocked(m, s.x, s.y, 30)).toBe(false);
           expect(inWater(m, s.x, s.y)).toBe(false);

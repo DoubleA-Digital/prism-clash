@@ -4,7 +4,7 @@
 // gun keeps working alongside the power. Then targeted terrain and line-of-sight behavior.
 import { describe, expect, test } from "vitest";
 import {
-  allPowers, allUlts, BTN, circleBlocked, POWER_IDS, POWERS, ULT_IDS, ULTIMATES, weaponDamage, WEAPONS,
+  allPowers, allUlts, BTN, circleBlocked, PLAYER, POWER_IDS, POWERS, ULT_IDS, ULTIMATES, weaponDamage, WEAPONS,
   type PowerId, type UltId, type WeaponId,
 } from "@prism/shared";
 import { kit, stuckInGeometry, ticks, type Kit } from "./powerkit";
@@ -92,8 +92,8 @@ describe("terrain", () => {
     const barrel = k.wall("barrel", 20, 70, 60, 110);
     k.cast();
     k.run(ticks(POWERS.shockwaveSlam.airTime) + 2);
-    expect(behind.hp).toBe(100);
-    expect(open.hp).toBeLessThan(100);
+    expect(behind.hp).toBe(PLAYER.maxHp);
+    expect(open.hp).toBeLessThan(PLAYER.maxHp);
     expect(crate.dead).toBe(true);
     expect(barrel.dead).toBe(true);
   });
@@ -126,8 +126,8 @@ describe("terrain", () => {
     k.w.spawnEffect({ kind: "meteorWarn", owner: 1, source: "meteorRain", x: 0, y: -20, r: ULTIMATES.meteorRain.impactRadius, life: 0.05, n: 1 });
     k.w.spawnEffect({ kind: "meteorWarn", owner: 1, source: "meteorRain", x: 300, y: 0, r: ULTIMATES.meteorRain.impactRadius, life: 0.05, n: 1 });
     k.run(3);
-    expect(shielded.hp).toBe(100);
-    expect(k.enemies[1]!.hp).toBeLessThan(100);
+    expect(shielded.hp).toBe(PLAYER.maxHp);
+    expect(k.enemies[1]!.hp).toBeLessThan(PLAYER.maxHp);
     expect(crate.dead).toBe(true);
     expect(glass.dead).toBe(true);
   });
@@ -263,8 +263,8 @@ describe("line of sight", () => {
     k.wall("wall", 100, -300, 124, 300);
     k.ult();
     k.run(ticks(ULTIMATES.finalStand.charge) + 2);
-    expect(behind.hp).toBe(100);
-    expect(open.hp).toBeLessThan(100);
+    expect(behind.hp).toBe(PLAYER.maxHp);
+    expect(open.hp).toBeLessThan(PLAYER.maxHp);
   });
 
   test("Third-Party marks only qualifying enemies the caster can see", () => {
@@ -296,7 +296,7 @@ describe("line of sight", () => {
     expect(open.shot.dead || open.shot.vy > WEAPONS.rifle.speed * 0.2).toBe(true);
     const walled = fire(true);
     expect(Math.abs(walled.shot.vy)).toBeLessThan(WEAPONS.rifle.speed * 0.1);
-    expect(walled.k.enemies[0]!.hp).toBe(100);
+    expect(walled.k.enemies[0]!.hp).toBe(PLAYER.maxHp);
     expect(weaponDamage({ id: "rifle", rarity: 0 })).toBeGreaterThan(0);
   });
 });

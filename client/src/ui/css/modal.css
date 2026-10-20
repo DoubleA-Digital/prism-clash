@@ -82,7 +82,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .pcard span { font-size: 0.95rem; color: #c5c9ef; line-height: 1.25; }
 
 /* Gameplay overlays */
-.spectate-bar { position: absolute; bottom: 1.8rem; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.7rem 1.6rem 0.8rem; border-radius: 1.4rem; text-align: center; max-width: min(34rem, 60vw); background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 0 2rem rgba(0, 0, 0, 0.5); pointer-events: none; animation: rise 0.4s var(--ease) both; }
+.spectate-bar { position: absolute; bottom: 1.8rem; left: 0; right: 0; width: max-content; margin-inline: auto; display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.7rem 1.6rem 0.8rem; border-radius: 1.4rem; text-align: center; max-width: min(34rem, 60vw); background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 0 2rem rgba(0, 0, 0, 0.5); pointer-events: none; animation: rise 0.4s var(--ease) both; }
 .spectate-bar .who { font-family: var(--display); font-weight: 800; font-size: 1rem; letter-spacing: 0.08em; }
 .spectate-bar .who small { display: block; font-family: var(--ui); font-size: 0.7rem; letter-spacing: 0.3em; color: var(--dim); }
 .spectate-bar .keys { color: var(--dim); font-weight: 600; font-size: 0.95rem; }
@@ -116,3 +116,22 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .rarity-chips .score-chip.rarity .pl-n { color: var(--rc); }
 .rarity-chips .score-chip.rarity .pts { color: var(--rc); font-size: 1.35rem; text-shadow: 0 0 1rem color-mix(in srgb, var(--rc) 55%, transparent); }
 .rarity-chips .score-chip.rarity .sub { font-family: var(--ui); font-weight: 600; font-size: 0.78rem; color: var(--dim); }
+/* Leaving after you're eliminated: the button in the spectator pill, and the Esc menu. */
+.spectate-bar .leave-row { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.2rem; pointer-events: auto; }
+.spectate-bar .leave-btn { min-width: 11rem; }
+.spectate-bar .or { color: var(--dim); font-weight: 600; font-size: 0.9rem; }
+.esc-menu { width: min(26rem, 92vw); }
+.esc-body { display: flex; flex-direction: column; gap: 0.7rem; padding: 1.2rem 1.4rem 1.3rem; }
+.esc-body .esc-sep { height: 1px; margin: 0.3rem 0; background: var(--line-soft); }
+.esc-body .esc-leave { color: #ffd1e6; border-color: rgba(255, 46, 136, 0.45); }
+.esc-body .esc-leave:hover, .esc-body .esc-leave:focus { box-shadow: 0 0 1.4rem rgba(255, 46, 136, 0.45); }
+.esc-body .hint { text-align: center; font-size: 0.9rem; }
+/* HUD menu button (top left, next to the ping chip): always there during a match. */
+.hud-menu-btn { position: absolute; z-index: 9; display: flex; align-items: center; justify-content: center; gap: calc(var(--u, 1px) * 7); border-radius: calc(var(--u, 1px) * 13); background: rgba(8, 7, 26, 0.78); border: 1px solid rgba(255, 255, 255, 0.16); color: rgba(220, 226, 255, 0.92); font-family: var(--display); font-weight: 800; font-size: calc(var(--u, 1px) * 11); letter-spacing: 0.16em; pointer-events: auto; transition: border-color 0.15s, box-shadow 0.15s, color 0.15s; }
+.hud-menu-btn:hover, .hud-menu-btn:focus-visible { border-color: var(--cyan); color: #fff; box-shadow: 0 0 1rem rgba(0, 240, 255, 0.35); }
+.hud-menu-btn .bars { width: calc(var(--u, 1px) * 12); height: calc(var(--u, 1px) * 9); background: linear-gradient(currentColor 0 0) top / 100% 18% no-repeat, linear-gradient(currentColor 0 0) center / 100% 18% no-repeat, linear-gradient(currentColor 0 0) bottom / 100% 18% no-repeat; }
+.esc-note { text-align: center; color: var(--dim); font-size: 0.9rem; font-weight: 600; }
+.esc-confirm { display: flex; flex-direction: column; gap: 0.35rem; text-align: center; padding: 0.2rem 0 0.4rem; }
+.esc-confirm b { font-family: var(--display); font-weight: 900; font-size: 1.15rem; letter-spacing: 0.08em; color: #fff; }
+.esc-confirm span { color: var(--dim); font-weight: 600; }
+.btn.danger-fill { background: linear-gradient(180deg, #ff4a7a, #c41c55); border-color: rgba(255, 210, 225, 0.6); color: #fff; }

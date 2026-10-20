@@ -1,7 +1,7 @@
 // Player cores: a glowing inner orb inside a rotating angular shell. The shell cracks at
 // 75/50/25% health and loses shards near death. Name and a small health bar float above.
 
-import { PLAYER, PLAYER_COLORS } from "@prism/shared";
+import { PLAYER, PLAYER_COLORS, type PlayerShape } from "@prism/shared";
 import { drawGlow, withAlpha } from "./glow";
 
 export interface CoreOpts {
@@ -160,29 +160,57 @@ export function drawCore(ctx: CanvasRenderingContext2D, o: CoreOpts) {
   ctx.restore();
 }
 
+/** A closed polygon through (x + px·s, y + py·s), rotated by `rot`. */
+function poly(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, pts: readonly (readonly [number, number])[], rot = 0) {
+  const c = Math.cos(rot);
+  const sn = Math.sin(rot);
+  pts.forEach(([px, py], i) => {
+    const qx = x + (px * c - py * sn) * s;
+    const qy = y + (px * sn + py * c) * s;
+    if (i === 0) ctx.moveTo(qx, qy);
+    else ctx.lineTo(qx, qy);
+  });
+}
+
+const T = 0.38;
+const CROSS: readonly (readonly [number, number])[] = [[-T, -1], [T, -1], [T, -T], [1, -T], [1, T], [T, T], [T, 1], [-T, 1], [-T, T], [-1, T], [-1, -T], [-T, -T]];
+const STAR = Array.from({ length: 10 }, (_, i) => {
+  const a = -Math.PI / 2 + (i * Math.PI) / 5;
+  const r = i % 2 ? 0.48 : 1.15;
+  return [Math.cos(a) * r, Math.sin(a) * r] as const;
+});
+const HEX = Array.from({ length: 6 }, (_, i) => [Math.cos((i * Math.PI) / 3), Math.sin((i * Math.PI) / 3)] as const);
+const BOWTIE: readonly (readonly [number, number])[] = [[-1, -0.85], [0, -0.12], [1, -0.85], [1, 0.85], [0, 0.12], [-1, 0.85]];
+
+/** The colorblind shape marker of a player color: white with a dark outline, one shape per seat. */
 export function drawShapeMarker(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, colorIndex: number) {
-  const shape = PLAYER_COLORS[colorIndex]?.shape ?? "circle";
+  const shape: PlayerShape = PLAYER_COLORS[colorIndex]?.shape ?? "circle";
   ctx.save();
   ctx.fillStyle = "#ffffff";
   ctx.strokeStyle = "rgba(5,4,13,0.9)";
   ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
   ctx.beginPath();
-  if (shape === "circle") ctx.arc(x, y, s, 0, Math.PI * 2);
-  else if (shape === "triangle") {
-    ctx.moveTo(x, y - s);
-    ctx.lineTo(x + s, y + s * 0.8);
-    ctx.lineTo(x - s, y + s * 0.8);
-  } else if (shape === "square") ctx.rect(x - s * 0.85, y - s * 0.85, s * 1.7, s * 1.7);
-  else if (shape === "diamond") {
-    ctx.moveTo(x, y - s * 1.1);
-    ctx.lineTo(x + s, y);
-    ctx.lineTo(x, y + s * 1.1);
-    ctx.lineTo(x - s, y);
-  } else {
-    const t = s * 0.38;
-    ctx.rect(x - t, y - s, t * 2, s * 2);
-    ctx.rect(x - s, y - t, s * 2, t * 2);
+  if (shape === "ring") {
+    // Hollow: a dark band, then a thick white circle on it.
+    ctx.arc(x, y, s * 0.85, 0, Math.PI * 2);
+    ctx.lineWidth = s * 0.55 + 4;
+    ctx.stroke();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = s * 0.55;
+    ctx.stroke();
+    ctx.restore();
+    return;
   }
+  if (shape === "circle") ctx.arc(x, y, s, 0, Math.PI * 2);
+  else if (shape === "triangle") poly(ctx, x, y, s, [[0, -1], [1, 0.8], [-1, 0.8]]);
+  else if (shape === "square") ctx.rect(x - s * 0.85, y - s * 0.85, s * 1.7, s * 1.7);
+  else if (shape === "diamond") poly(ctx, x, y, s, [[0, -1.1], [1, 0], [0, 1.1], [-1, 0]]);
+  else if (shape === "cross") poly(ctx, x, y, s, CROSS);
+  else if (shape === "x") poly(ctx, x, y, s * 1.1, CROSS, Math.PI / 4);
+  else if (shape === "star") poly(ctx, x, y, s, STAR);
+  else if (shape === "hex") poly(ctx, x, y, s, HEX);
+  else poly(ctx, x, y, s, BOWTIE);
   ctx.closePath();
   ctx.stroke();
   ctx.fill();

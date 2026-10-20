@@ -20,6 +20,12 @@ interface Banner {
 
 const BANNER_LIFE = 2.4;
 
+/** HUD scale for a window size (1 at 1600x900, clamped for tiny and huge windows). */
+export const hudUnit = (W: number, H: number) => Math.max(0.75, Math.min(1.3, Math.min(W / 1600, H / 900) * 1.1));
+
+/** The DOM menu button's box in HUD units (top left); the ping chip sits just right of it. */
+export const MENU_BTN = { x: 14, y: 14, w: 78, h: 26 } as const;
+
 export class Hud {
   private vitals = new Vitals();
   private hurtFlash = 0;
@@ -46,7 +52,7 @@ export class Hud {
     ctx.textBaseline = "middle";
     const W = h.w;
     const H = h.h;
-    const u = Math.max(0.75, Math.min(1.3, Math.min(W / 1600, H / 900) * 1.1));
+    const u = hudUnit(W, H);
 
     this.drawEdges(ctx, h, W, H);
     if (h.self && h.self.alive) {
@@ -143,10 +149,11 @@ export class Hud {
     const total = Math.max(g.alive, h.fighters);
     ctx.font = font(800, 28 * u, MONO);
     outlined(ctx, `${g.alive}`, ax - 14 * u, y + 42 * u, "#ffffff", "rgba(5,4,13,0.6)", 4 * u);
-    // One pip per fighter, two rows of six.
+    // One pip per fighter, in two rows.
+    const perRow = Math.min(6, Math.ceil(total / 2));
     for (let i = 0; i < total; i++) {
-      const px = ax + 10 * u + (i % 6) * 10 * u;
-      const py = y + 37 * u + Math.floor(i / 6) * 10 * u;
+      const px = ax + 10 * u + (i % perRow) * 10 * u;
+      const py = y + 37 * u + Math.floor(i / perRow) * 10 * u;
       ctx.beginPath();
       ctx.arc(px, py, 3.2 * u, 0, Math.PI * 2);
       ctx.fillStyle = i < g.alive ? "#ffffff" : "rgba(255,255,255,0.15)";
@@ -226,8 +233,10 @@ export class Hud {
     ctx.font = font(700, 12 * u, MONO);
     const widths = parts.map((p) => ctx.measureText(p.text).width + 22 * u);
     const total = widths.reduce((a, b) => a + b, 0) + 10 * u;
-    panel(ctx, 14 * u, 14 * u, total, 26 * u, 13 * u, { border: "rgba(255,255,255,0.12)" });
-    let x = 24 * u;
+    // Right of the menu button.
+    const x0 = (MENU_BTN.x + MENU_BTN.w + 8) * u;
+    panel(ctx, x0, 14 * u, total, 26 * u, 13 * u, { border: "rgba(255,255,255,0.12)" });
+    let x = x0 + 10 * u;
     ctx.textAlign = "left";
     parts.forEach((p, i) => {
       ctx.beginPath();

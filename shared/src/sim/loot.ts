@@ -38,7 +38,31 @@ export class LootIndex {
   }
 }
 
+/** Kinds that stack into one pile with a count (weapons and shards stay one per item). */
+const STACKS: readonly LootKind[] = ["ammo", "bandage", "medkit", "shield", "throwable"];
+
+/** A live pile of the same stackable item within LOOT.stackRadius of (x, y), nearest first. */
+function stackTarget(w: World, kind: LootKind, throwable: ThrowableId, x: number, y: number): Loot | null {
+  if (!STACKS.includes(kind)) return null;
+  let best: Loot | null = null;
+  let bd = LOOT.stackRadius ** 2;
+  w.lootIndex.near(x, y, LOOT.stackRadius, (l) => {
+    if (l.kind !== kind || (kind === "throwable" && l.throwable !== throwable)) return;
+    const d = (l.x - x) ** 2 + (l.y - y) ** 2;
+    if (d <= bd) {
+      bd = d;
+      best = l;
+    }
+  });
+  return best;
+}
+
 export function createLoot(w: World, o: Partial<Loot> & { kind: LootKind; x: number; y: number }): Loot {
+  const pile = stackTarget(w, o.kind, o.throwable ?? "frag", o.x, o.y);
+  if (pile) {
+    pile.count += o.count ?? 1;
+    return pile;
+  }
   const l: Loot = {
     id: w.id(), kind: o.kind, x: o.x, y: o.y, weapon: o.weapon ?? "pistol", rarity: o.rarity ?? 0, mag: o.mag ?? 0, reserve: o.reserve ?? 0,
     throwable: o.throwable ?? "frag", count: o.count ?? 1, dead: false,
@@ -89,7 +113,8 @@ export function spawnInitialLoot(w: World) {
 }
 
 export function dropFromCrate(w: World, x: number, y: number) {
-  for (let i = 0; i < LOOT.crateRolls; i++) {
+  const rolls = LOOT.crateRolls + (w.rng.next() < LOOT.crateBonusChance ? 1 : 0);
+  for (let i = 0; i < rolls; i++) {
     const p = spot(w, x, y, i + 1);
     rollItem(w, "crate", p.x, p.y);
   }
@@ -111,7 +136,10 @@ export function dropLoadout(w: World, p: Player) {
     const n = inv.bandages;
     items.push((x, y) => createLoot(w, { kind: "bandage", x, y, count: n }));
   }
-  for (let i = 0; i < inv.medkits; i++) items.push((x, y) => createLoot(w, { kind: "medkit", x, y }));
+  if (inv.medkits > 0) {
+    const n = inv.medkits;
+    items.push((x, y) => createLoot(w, { kind: "medkit", x, y, count: n }));
+  }
   if (p.armor >= ITEMS.shield.amount * 0.5) items.push((x, y) => createLoot(w, { kind: "shield", x, y }));
   items.push((x, y) => createLoot(w, { kind: "ammo", x, y }));
   items.forEach((make, i) => {
@@ -145,7 +173,7 @@ export function autoPickup(w: World, p: Player) {
       case "ammo": {
         const guns = inv.weapons.filter((g): g is WeaponItem => !!g && !WEAPONS[g.id].infinite);
         if (!guns.length) return;
-        for (const g of guns) g.reserve += Math.round(magSize(g) * ITEMS.ammoMags);
+        for (const g of guns) g.reserve += Math.round(magSize(g) * ITEMS.ammoMags * l.count);
         took(w, p, l);
         return;
       }
@@ -157,17 +185,25 @@ export function autoPickup(w: World, p: Player) {
         if (l.count <= 0) took(w, p, l);
         return;
       }
-      case "medkit":
+      case "medkit": {
         if (inv.medkits >= ITEMS.medkit.max) return;
-        inv.medkits++;
-        took(w, p, l);
+        const n = Math.min(l.count, ITEMS.medkit.max - inv.medkits);
+        inv.medkits += n;
+        l.count -= n;
+        if (l.count <= 0) took(w, p, l);
         return;
-      case "shield":
+      }
+      case "shield": {
         if (p.armor >= ITEMS.shield.max) return;
-        p.armor = Math.min(ITEMS.shield.max, p.armor + ITEMS.shield.amount);
-        took(w, p, l);
+        // Cells snap on one at a time until the armor is full; the rest stay in the pile.
+        while (l.count > 0 && p.armor < ITEMS.shield.max) {
+          p.armor = Math.min(ITEMS.shield.max, p.armor + ITEMS.shield.amount);
+          l.count--;
+        }
+        if (l.count <= 0) took(w, p, l);
         w.emit({ t: "heal", by: p.id, item: "shield", done: true });
         return;
+      }
       case "throwable": {
         if (inv.throwable && inv.throwable !== l.throwable) return;
         if (inv.throws >= ITEMS.throwMax) return;
@@ -220,7 +256,8 @@ export function interact(w: World, p: Player) {
     const n = inv.throws;
     inv.throwable = l.throwable;
     inv.throws = Math.min(ITEMS.throwMax, l.count);
-    took(w, p, l);
+    l.count -= inv.throws;
+    if (l.count <= 0) took(w, p, l);
     if (old && n > 0) createLoot(w, { kind: "throwable", x: p.x, y: p.y, throwable: old, count: n });
     return;
   }

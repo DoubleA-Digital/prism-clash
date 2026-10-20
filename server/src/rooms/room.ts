@@ -1,12 +1,12 @@
-// One room: up to 5 humans plus bots filling the rest of the 12 fighter seats, the lobby,
+// One room: up to 10 humans, with bots filling the empty seats of the 10-fighter drop, the lobby,
 // and the match state machine:
 //   lobby → ultSelect → draft → countdown → round (one long battle royale) → matchEnd
 // The room ticks at 30 Hz; during the match it steps the authoritative World and sends
 // each human a delta snapshot every tick, culled to what they can see.
 
 import {
-  applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
-  type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
+  applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
+  type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type MatchProgress, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { createBrain, prepareBots, type BotBrain } from "../bots/brain";
 import { silentLogger, type Logger, type PeerSocket } from "../platform";
@@ -66,10 +66,9 @@ export class Room {
     return this.humans.length >= NET.maxPlayers || (this.phase !== "lobby" && this.members.size >= MATCH.fighters);
   }
 
-  private freeColor(human: boolean): number {
+  private freeColor(): number {
     const used = new Set([...this.members.values()].map((m) => m.color));
-    const pool = human ? PLAYER_COLORS.slice(0, HUMAN_COLORS) : [...PLAYER_COLORS.slice(HUMAN_COLORS), ...PLAYER_COLORS.slice(0, HUMAN_COLORS)];
-    return pool.find((c) => !used.has(c.id))?.id ?? this.rng.int(PLAYER_COLORS.length);
+    return PLAYER_COLORS.find((c) => !used.has(c.id))?.id ?? this.rng.int(PLAYER_COLORS.length);
   }
 
   private uniqueName(name: string, selfId: number): string {
@@ -85,9 +84,11 @@ export class Room {
   addHuman(id: number, name: string, token: string, ws: PeerSocket, ip: string): Member | null {
     if (this.isFull()) return null;
     const m = newMember(id, this.uniqueName(name || "Player", id), token, false, ip, Date.now());
-    m.color = this.freeColor(true);
+    m.color = this.freeColor();
     m.ws = ws;
     m.ready = false;
+    // Joining while a match runs: wait in the lobby for the next one.
+    m.inLobby = this.phase !== "lobby";
     this.members.set(id, m);
     if (!this.hostId || !this.members.get(this.hostId) || this.members.get(this.hostId)?.bot) this.hostId = id;
     this.broadcastRoom();
@@ -117,6 +118,40 @@ export class Room {
     if (this.phase === "lobby") this.removeMember(m.id);
     else this.broadcastRoom();
     this.migrateHost();
+    // The last one still looking at the results dropped: everyone else is already in the lobby.
+    this.lobbyIfResultsEmpty();
+  }
+
+  /** On the results screen with every connected human already back in the lobby: reopen it. */
+  private lobbyIfResultsEmpty() {
+    if (this.phase === "matchEnd" && this.humans.every((h) => h.inLobby || !h.connected)) this.toLobby();
+  }
+
+  /**
+   * Back to the lobby screen while the match carries on: for the eliminated (the world keeps
+   * their stats and placement) and for anyone on the results screen. Spectating stays the default.
+   */
+  private leaveMatch(m: Member) {
+    if (m.bot || m.inLobby) return;
+    if (this.phase === "matchEnd") {
+      m.inLobby = true;
+      m.ready = false;
+      this.sendPhase(m);
+      this.broadcastRoom();
+      this.lobbyIfResultsEmpty();
+      return;
+    }
+    if (this.phase !== "round" && this.phase !== "countdown") return;
+    const p = this.world?.players.get(m.id);
+    if (p?.alive) return;
+    m.inLobby = true;
+    m.ready = false;
+    m.spectate = 0;
+    m.inputs = [];
+    m.shardOptions = [];
+    m.shardPending = 0;
+    this.sendPhase(m);
+    this.broadcastRoom();
   }
 
   removeMember(id: number) {
@@ -144,7 +179,7 @@ export class Room {
     let id = 1_000_000 + this.rng.int(1e6);
     while (this.members.has(id)) id++;
     const m = newMember(id, name, "", true, "bot", Date.now());
-    m.color = this.freeColor(false);
+    m.color = this.freeColor();
     m.hero = this.botHero();
     this.members.set(id, m);
     this.bots.set(id, createBrain(this.settings.botDifficulty, this.rng.int(1e9)));
@@ -183,12 +218,34 @@ export class Room {
       hostId: this.hostId,
       phase: this.phase,
       settings: { ...this.settings },
-      players: [...this.members.values()].map((m) => ({ id: m.id, name: m.name, color: m.color, hero: m.hero, ready: m.ready, bot: m.bot, connected: m.connected, host: m.id === this.hostId })),
+      players: [...this.members.values()].map((m) => ({
+        id: m.id, name: m.name, color: m.color, hero: m.hero, ready: m.ready, bot: m.bot, connected: m.connected, host: m.id === this.hostId, inLobby: m.inLobby,
+      })),
+      match: this.matchProgress(),
     };
+  }
+
+  private matchProgress(): MatchProgress | null {
+    if (this.phase === "lobby" || this.phase === "matchEnd") return null;
+    const w = this.world;
+    if (!w) {
+      const fighters = [...this.members.values()].filter((m) => !m.inLobby).length;
+      return { alive: fighters, fighters, elapsed: 0 };
+    }
+    const elapsed = this.phase === "round" ? Math.max(0, Math.floor((w.tick - this.matchStartTick) / NET.tickRate)) : 0;
+    return { alive: w.alivePlayers().length, fighters: w.players.size, elapsed };
   }
 
   broadcastRoom() {
     this.broadcast({ type: S2C.roomState, room: this.roomState() });
+  }
+
+  /** Keeps the lobby's "match in progress" panel current for whoever is waiting there. */
+  private updateLobbyWaiters() {
+    const waiting = [...this.members.values()].filter((m) => m.inLobby && m.ws);
+    if (!waiting.length) return;
+    const data = encode({ type: S2C.roomState, room: this.roomState() });
+    for (const m of waiting) if (m.ws && m.ws.readyState === 1) m.ws.send(data);
   }
 
   handle(m: Member, msg: ClientMsg) {
@@ -218,8 +275,18 @@ export class Room {
         }
         return;
       case C2S.start:
-        if (m.id === this.hostId && this.phase === "lobby") this.tryStart();
+        // Never while a match runs. Once it's over, a host waiting in the lobby can start the
+        // next one: everyone still on the results screen comes along to the lobby.
+        if (m.id !== this.hostId) return;
+        if (this.phase === "matchEnd" && m.inLobby) {
+          this.toLobby();
+          // Those just brought back from the results get to ready up first.
+          if (this.humans.some((h) => !h.ready && h.id !== this.hostId)) return;
+        }
+        if (this.phase === "lobby") this.tryStart();
         return;
+      case C2S.leaveMatch:
+        return this.leaveMatch(m);
       case C2S.pickUlt:
         if (this.phase === "ultSelect" && isInt(msg.index, 0, 2) && m.ultPick === null && msg.index < m.ultOptions.length) {
           m.ultPick = msg.index;
@@ -251,7 +318,15 @@ export class Room {
   }
 
   private lobbySet(m: Member, msg: Extract<ClientMsg, { type: typeof C2S.lobbySet }>) {
-    if (this.phase !== "lobby") return;
+    if (this.phase !== "lobby") {
+      // Waiting out a match in the lobby: you can ready up for the next one (looks and room
+      // settings stay locked while the match uses them).
+      if (m.inLobby && typeof msg.ready === "boolean") {
+        m.ready = msg.ready;
+        this.broadcastRoom();
+      }
+      return;
+    }
     if (isInt(msg.color, 0, HUMAN_COLORS - 1)) {
       const taken = [...this.members.values()].some((o) => o.id !== m.id && o.color === msg.color);
       if (!taken) m.color = msg.color;
@@ -299,9 +374,14 @@ export class Room {
   }
 
   sendPhase(m: Member) {
+    if (m.inLobby && this.phase !== "lobby") {
+      // Their screen is the lobby until the room gets back there.
+      this.send(m, { type: S2C.phase, phase: "lobby", endsIn: 0, map: this.mapId, seed: this.seed, playerCount: this.members.size, tick: this.world?.tick ?? 0 });
+      return;
+    }
     this.send(m, {
       type: S2C.phase, phase: this.phase, endsIn: (this.phaseEndsAt - this.tick) / NET.tickRate, map: this.mapId,
-      seed: this.seed, playerCount: this.members.size, tick: this.world?.tick ?? 0,
+      seed: this.seed, playerCount: this.world?.players.size ?? this.members.size, tick: this.world?.tick ?? 0,
     });
     if (this.phase === "ultSelect" && m.ultPick === null) this.send(m, { type: S2C.ultOffer, options: m.ultOptions });
     if (this.phase === "draft" && m.draftPick === null) this.send(m, { type: S2C.draftOffer, options: m.draftOptions });
@@ -328,7 +408,7 @@ export class Room {
   /** Bots and humans have all picked (or time ran out): move on. */
   private maybeAdvanceSelection(timeUp = false) {
     if (this.phase === "ultSelect") {
-      const all = [...this.members.values()].every((m) => m.ultPick !== null || !m.connected);
+      const all = [...this.members.values()].every((m) => m.ultPick !== null || !m.connected || m.inLobby);
       if (!all && !timeUp) return;
       for (const m of this.members.values()) {
         const i = m.ultPick ?? this.rng.int(m.ultOptions.length);
@@ -338,7 +418,7 @@ export class Room {
       return;
     }
     if (this.phase === "draft") {
-      const all = [...this.members.values()].every((m) => m.draftPick !== null || !m.connected);
+      const all = [...this.members.values()].every((m) => m.draftPick !== null || !m.connected || m.inLobby);
       if (!all && !timeUp) return;
       for (const m of this.members.values()) {
         const i = m.draftPick ?? this.rng.int(m.draftOptions.length);
@@ -355,6 +435,8 @@ export class Room {
     this.matches++;
     const w = new World(this.mapId, this.seed);
     for (const m of this.members.values()) {
+      // Someone who joined during the picks waits in the lobby for the next match.
+      if (m.inLobby) continue;
       const p = w.addPlayer(m.id, m.name, m.color, m.bot);
       p.slots = [0, 1].map((i) => {
         const id = m.loadout.slots[i];
@@ -376,7 +458,7 @@ export class Room {
     if (this.bots.size) prepareBots(w);
     this.world = w;
     this.victoryAt = 0;
-    this.log.info(`room ${this.code}: match on ${this.mapId} (seed ${this.seed}), ${this.members.size} fighters`);
+    this.log.info(`room ${this.code}: match on ${this.mapId} (seed ${this.seed}), ${w.players.size} fighters`);
     this.setPhase("countdown", MATCH.countdownSeconds);
   }
 
@@ -399,7 +481,9 @@ export class Room {
     this.world = null;
     for (const m of this.members.values()) {
       resetMatchProgress(m);
-      m.ready = m.bot;
+      // Whoever waited in the lobby and readied up for the next match stays ready.
+      m.ready = m.bot || (m.inLobby && m.ready);
+      m.inLobby = false;
     }
     // Drop bots that were only fill-ins; the host can fill again.
     for (const m of [...this.members.values()]) if (m.bot) this.removeMember(m.id);
@@ -445,7 +529,7 @@ export class Room {
     const w = this.world;
     if (!w || this.phase !== "round" || (kind !== "lava" && kind !== "slow") || !isNum(x) || !isNum(y)) return;
     const self = w.players.get(m.id);
-    if (!self || self.alive || this.tick < m.hauntReadyAt) return;
+    if (!self || self.alive || m.inLobby || this.tick < m.hauntReadyAt) return;
     if (!w.insideArena(x, y, 20)) return;
     m.hauntReadyAt = this.tick + secs(GHOST.hauntCooldown);
     const cfg = kind === "lava" ? GHOST.lava : GHOST.slow;
@@ -461,8 +545,10 @@ export class Room {
     const g = power as DebugGrant;
     if (g === "fullUlt") {
       if (p.ult) p.ult.charge = 100;
+    } else if (g === "die") {
+      w.kill(p);
     } else if (g === "heal") {
-      p.hp = 100;
+      p.hp = PLAYER.maxHp;
     } else if (g === "loadout") {
       debugLoadout(p);
     } else if (g === "shard") {
@@ -557,6 +643,10 @@ export class Room {
         if (brain && p.alive) inputs.set(m.id, [brain.think(w, p)]);
         continue;
       }
+      if (m.inLobby) {
+        m.inputs = [];
+        continue;
+      }
       inputs.set(m.id, this.humanFrames(w, m, p.ackSeq, p.aim));
     }
     w.step(inputs);
@@ -566,6 +656,7 @@ export class Room {
       w.emit({ t: "win", winner: w.alivePlayers().length === 1 ? (w.alivePlayers()[0]?.id ?? 0) : 0 });
     }
     this.sendSnapshots(w, w.events);
+    if (this.tick % NET.tickRate === 0) this.updateLobbyWaiters();
     if (this.victoryAt && this.tick >= this.victoryAt) this.endMatch();
   }
 
@@ -603,7 +694,7 @@ export class Room {
   private sendSnapshots(w: World, events: GameEvent[]) {
     const matchTime = this.phase === "round" ? (w.tick - this.matchStartTick) / NET.tickRate : 0;
     for (const m of this.members.values()) {
-      if (m.bot || !m.ws) continue;
+      if (m.bot || !m.ws || m.inLobby) continue;
       this.send(m, { type: S2C.snapshot, snap: buildSnapshot(w, m, events, matchTime) });
     }
   }

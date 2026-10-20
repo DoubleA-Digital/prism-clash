@@ -141,11 +141,11 @@ export function lootName(l: Pick<NetLoot, "kind" | "weapon" | "rarity" | "throwa
     case "bandage":
       return `Bandage${l.count > 1 ? ` ×${l.count}` : ""}`;
     case "medkit":
-      return "Medkit";
+      return `Medkit${l.count > 1 ? ` ×${l.count}` : ""}`;
     case "shield":
-      return "Shield Cell";
+      return `Shield Cell${l.count > 1 ? ` ×${l.count}` : ""}`;
     case "ammo":
-      return "Ammo";
+      return `Ammo${l.count > 1 ? ` ×${l.count}` : ""}`;
     case "shard":
       return "Prism Shard";
     default:
@@ -180,7 +180,26 @@ export function drawLoot(ctx: CanvasRenderingContext2D, l: NetLoot, time: number
   ctx.stroke();
   ctx.translate(l.x, l.y - 4 + bob);
   drawItemGlyph(ctx, l.kind, 11, l.throwable, time);
+  // A stacked pile shows its count on a small badge.
+  if (l.count > 1) drawCountBadge(ctx, 13, -9, l.count, col);
   ctx.restore();
+}
+
+function drawCountBadge(ctx: CanvasRenderingContext2D, x: number, y: number, n: number, col: string) {
+  const text = `×${n}`;
+  ctx.font = `800 11px "JetBrains Mono", monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const w = ctx.measureText(text).width + 8;
+  ctx.fillStyle = "rgba(8,7,26,0.9)";
+  ctx.strokeStyle = withAlpha(col, 0.9);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x - w / 2, y - 7.5, w, 15, 7.5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, x, y + 0.5);
 }
 
 /** Floating name tag for the loot you're standing next to. */

@@ -1,7 +1,7 @@
 // Powers part B on the real World: Molten Path, Boomerang Glaive, Gravity Flip, Bounty Beacon,
 // Decoy Swarm, Shockwave Slam, Third-Party, plus the Event Horizon Blade and Gravity Slam combos.
 import { describe, expect, test } from "vitest";
-import { addSolid, BTN, POWERS, TERRAIN, ULT_CHARGE, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
+import { addSolid, BTN, PLAYER, POWERS, TERRAIN, ULT_CHARGE, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
 import { bountyTargets } from "../src/powers/bounty-beacon";
 import { GLAIVE } from "../src/powers/boomerang-glaive";
 
@@ -66,7 +66,7 @@ function setup(power: PowerId, enemyAt: [number, number][]): Setup {
 }
 
 const ticks = (seconds: number) => Math.ceil(seconds * 30);
-const hpLost = (p: Player) => 100 - p.hp;
+const hpLost = (p: Player) => PLAYER.maxHp - p.hp;
 
 describe("Molten Path", () => {
   const C = POWERS.moltenPath;

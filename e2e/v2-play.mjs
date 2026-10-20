@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// End-to-end for v2: practice vs 11 bots on the big map. Picks an ultimate and a power,
+// End-to-end for v2: practice vs 9 bots on the big map. Picks an ultimate and a power,
 // plays (moves, shoots, picks up, reloads, scopes, heals), grants a full kit from the F1
 // test panel, and takes screenshots to e2e/out/v2-*.png.
 //   node e2e/v2-play.mjs [url] [--headed] [--seconds 40]

@@ -16,6 +16,9 @@ export interface Member {
   disconnectedAt: number;
   joinedAt: number;
   ip: string;
+  /** On the lobby screen while a match runs (left after being eliminated, or joined mid-match):
+   *  no snapshots, no picks, not part of the next world until the room is back in the lobby. */
+  inLobby: boolean;
 
   // Match progress
   loadout: DraftLoadout;
@@ -47,7 +50,7 @@ export interface Member {
 
 export function newMember(id: number, name: string, token: string, bot: boolean, ip: string, now: number): Member {
   return {
-    id, name, color: 0, hero: DEFAULT_HERO, ready: bot, bot, token, ws: null, connected: true, disconnectedAt: 0, joinedAt: now, ip,
+    id, name, color: 0, hero: DEFAULT_HERO, ready: bot, bot, token, ws: null, connected: true, disconnectedAt: 0, joinedAt: now, ip, inLobby: false,
     loadout: { slots: [null, null], older: 0 }, ult: null, ultOptions: [], draftOptions: [], draftPick: null, ultPick: null,
     shardOptions: [], shardEndsAt: 0, shardPending: 0,
     inputs: [], dtBudget: 0, budgetAt: 0, ackTick: -1, baselines: new Map(), rttMs: 80, spectate: 0, hauntReadyAt: 0,

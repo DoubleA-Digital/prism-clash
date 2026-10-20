@@ -13,6 +13,8 @@ declare global {
       grant(power: DebugGrant): void;
       /** Screen position (CSS px) and distance of the nearest visible living enemy. */
       foe(): { x: number; y: number; dist: number } | null;
+      /** Loot piles the client currently knows about (what the server sent within loot range). */
+      lootCount(): number;
       stats(): { rtt: number; corrections: number; correctionsPerMin: number; maxCorrection: number; phase: string; alive: boolean; snaps: number; downKBs: number; upKBs: number };
     };
   }
@@ -43,6 +45,11 @@ export function installDevHooks(toScreen: (x: number, y: number) => { x: number;
         if (!best || dist < best.dist) best = { ...toScreen(p.x, p.y), dist };
       }
       return best;
+    },
+    lootCount() {
+      let n = 0;
+      for (const a of session.view?.latest?.ents.values() ?? []) if (a[0] === EK.loot) n++;
+      return n;
     },
     stats() {
       const d = session.view?.debug;

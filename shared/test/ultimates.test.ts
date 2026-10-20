@@ -3,7 +3,7 @@
 import { describe, expect, test } from "vitest";
 import {
   addBush,
-  allUlts, BTN, PF, ULT_IDS, ULTIMATES, WEAPONS, World, pointSegment,
+  allUlts, BTN, PF, PLAYER, ULT_IDS, ULTIMATES, WEAPONS, World, pointSegment,
   type GameEvent, type InputFrame, type Player, type PowerId, type UltId,
 } from "@prism/shared";
 import { finalStandDamage } from "../src/ultimates/final-stand";
@@ -91,7 +91,7 @@ describe("ultimates", () => {
     expect(first.life).toBeCloseTo(ULTIMATES.meteorRain.warn);
     s.w.teleport(target, first.x, first.y);
     s.run(ticks(meteorSpawnAt(1) + ULTIMATES.meteorRain.warn) - 1);
-    expect(target.hp).toBeLessThan(100);
+    expect(target.hp).toBeLessThan(PLAYER.maxHp);
     expect(target.lastHitBy).toBe(1);
     expect(target.lastHitSource).toBe("meteorRain");
     s.run(ticks(ULTIMATES.meteorRain.duration) + 5);
@@ -99,7 +99,7 @@ describe("ultimates", () => {
     expect(booms).toHaveLength(ULTIMATES.meteorRain.count);
     const reach = ULTIMATES.meteorRain.radius * 1.2;
     for (const b of booms) expect(Math.hypot(b.x - area.x, b.y - area.y)).toBeLessThan(reach);
-    expect(s.caster.hp).toBe(100);
+    expect(s.caster.hp).toBe(PLAYER.maxHp);
   });
 
   test("overdrive: cooldowns reset, faster fire with no ammo spent", () => {
@@ -133,11 +133,11 @@ describe("ultimates", () => {
     expect(s.w.insideArena(rift.x2, rift.y2)).toBe(true);
     s.run(ticks(1.5));
     expect(far.y).toBeLessThan(420 - 60);
-    expect(far.hp).toBe(100);
+    expect(far.hp).toBe(PLAYER.maxHp);
     s.run(ticks(ULTIMATES.riftCollapse.pullTime - 1.5) + 2);
-    expect(near.hp).toBeCloseTo(100 - ULTIMATES.riftCollapse.closeDamage);
+    expect(near.hp).toBeCloseTo(PLAYER.maxHp - ULTIMATES.riftCollapse.closeDamage);
     expect(near.lastHitSource).toBe("riftCollapse");
-    expect(s.caster.hp).toBe(100);
+    expect(s.caster.hp).toBe(PLAYER.maxHp);
     expect(Math.hypot(s.caster.x, s.caster.y)).toBeLessThan(1);
     expect(s.events.filter((e) => e.t === "explode" && e.source === "riftCollapse").length).toBeGreaterThanOrEqual(2);
   });
@@ -175,7 +175,7 @@ describe("ultimates", () => {
     castUlt(s);
     expect(s.w.damage(s.caster, 30, close.id, "pistol")).toBe(0);
     expect(s.w.damage(s.caster, 20, away.id, "pistol")).toBe(0);
-    expect(s.caster.hp).toBe(100);
+    expect(s.caster.hp).toBe(PLAYER.maxHp);
     expect(s.caster.absorbed).toBe(50);
     s.run(ticks(1), () => frame(s.caster, BTN.shoot, BTN.shoot));
     expect(s.events.some((e) => e.t === "shoot" && e.by === 1)).toBe(false);
@@ -184,9 +184,9 @@ describe("ultimates", () => {
     s.run(ticks(ULTIMATES.finalStand.charge) + 2);
     const expected = finalStandDamage(50);
     expect(expected).toBeCloseTo(ULTIMATES.finalStand.baseDamage + ULTIMATES.finalStand.absorbMult * 50);
-    expect(close.hp).toBeCloseTo(100 - expected);
+    expect(close.hp).toBeCloseTo(PLAYER.maxHp - expected);
     expect(close.x).toBeGreaterThan(200);
-    expect(away.hp).toBe(100);
+    expect(away.hp).toBe(PLAYER.maxHp);
     expect(s.w.hasStatus(s.caster, "finalStand")).toBe(false);
     expect(s.caster.absorbed).toBe(0);
     // Vulnerable again afterwards.
@@ -212,6 +212,6 @@ describe("ultimates", () => {
     s.run(4);
     expect(shot.dead || shot.vy > 0).toBe(true);
     s.run(ticks(0.6));
-    expect(target.hp).toBeLessThan(100);
+    expect(target.hp).toBeLessThan(PLAYER.maxHp);
   });
 });

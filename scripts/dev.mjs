@@ -11,7 +11,8 @@ const run = (name, cmd, args, cwd) => {
   return p;
 };
 
-const procs = [run("server", "pnpm", ["-C", "server", "dev"], "."), run("client", "pnpm", ["-C", "client", "dev", "--", "--port", "5173", "--strictPort"], ".")];
+const clientPort = process.env.CLIENT_PORT ?? "5173";
+const procs = [run("server", "pnpm", ["-C", "server", "dev"], "."), run("client", "pnpm", ["-C", "client", "dev", "--", "--port", clientPort, "--strictPort"], ".")];
 const stop = () => {
   for (const p of procs) p.kill();
   process.exit(0);

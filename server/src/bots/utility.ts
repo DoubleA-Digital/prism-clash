@@ -85,7 +85,7 @@ export function scoreStates(s: Situation, p: Profile): Record<BotState, number> 
   const I = BOTS.investigate;
   if (!s.early && s.noiseAge < I.memory && s.noiseDist < I.range && eff > I.minHealth) sc.investigate = U.investigate * p.thirdParty * p.aggression * (0.5 + s.armed * 0.6);
 
-  if (s.ambushSpot && s.ambushReady && s.hp >= 50) sc.ambush = U.ambush * p.ambush * (s.lateGame ? U.ambushLate : 1);
+  if (s.ambushSpot && s.ambushReady && s.hp >= PLAYER.maxHp * 0.5) sc.ambush = U.ambush * p.ambush * (s.lateGame ? U.ambushLate : 1);
 
   sc[s.current] += BOTS.stickiness;
   return sc;

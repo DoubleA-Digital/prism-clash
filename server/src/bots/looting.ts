@@ -3,7 +3,7 @@
 // shards), when to press F on a weapon, which gun suits the current range, and when to heal.
 
 import {
-  BOTS, interactTarget, ITEMS, LOOT, magSize, pickHeal, weaponRange, WEAPONS,
+  BOTS, interactTarget, ITEMS, LOOT, magSize, pickHeal, PLAYER, weaponRange, WEAPONS,
   type Loot, type Player, type WeaponId, type WeaponItem, type World,
 } from "@prism/shared";
 
@@ -43,9 +43,9 @@ export function lootValue(me: Player, l: Loot): number {
       return need > 0 ? 1 + need : 0;
     }
     case "bandage":
-      return inv.bandages < ITEMS.bandage.max ? 1.1 + (me.hp < 70 ? 1 : 0) - inv.bandages * 0.06 : 0;
+      return inv.bandages < ITEMS.bandage.max ? 1.1 + (me.hp < PLAYER.maxHp * 0.7 ? 1 : 0) - inv.bandages * 0.06 : 0;
     case "medkit":
-      return inv.medkits < ITEMS.medkit.max ? 1.8 + (me.hp < 50 ? 1.5 : 0) - inv.medkits * 0.3 : 0;
+      return inv.medkits < ITEMS.medkit.max ? 1.8 + (me.hp < PLAYER.maxHp * 0.5 ? 1.5 : 0) - inv.medkits * 0.3 : 0;
     case "shield":
       return me.armor < ITEMS.shield.max ? 2.4 + (me.armor <= 0 ? 0.6 : 0) : 0;
     case "throwable":

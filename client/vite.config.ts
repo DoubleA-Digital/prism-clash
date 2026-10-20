@@ -1,11 +1,15 @@
 import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
 
+// Dev ports: PORT is the game server's (the /ws proxy target), CLIENT_PORT this dev server's.
+const serverPort = Number(process.env.PORT ?? 8787);
+const clientPort = Number(process.env.CLIENT_PORT ?? 5173);
+
 export default defineConfig({
   resolve: { alias: { "@prism/shared": fileURLToPath(new URL("../shared/src/index.ts", import.meta.url)) } },
   server: {
-    port: 5173,
-    proxy: { "/ws": { target: "ws://localhost:8787", ws: true }, "/healthz": "http://localhost:8787" },
+    port: clientPort,
+    proxy: { "/ws": { target: `ws://localhost:${serverPort}`, ws: true }, "/healthz": `http://localhost:${serverPort}` },
   },
   // The practice server (src/net/practice.worker.ts) is a module worker with its own bundle.
   worker: { format: "es" },

@@ -152,7 +152,7 @@ export class GameHub {
       const room = this.rooms.get(code);
       if (!room) return this.err(c.ws, "no_room", `No room called ${code}. Check the code with your friend.`);
       if (c.room === room) return;
-      if (room.isFull()) return this.err(c.ws, "room_full", "That room is full (5 players).");
+      if (room.isFull()) return this.err(c.ws, "room_full", `That room is full (${NET.maxPlayers} players).`);
       if (c.room) this.leave(c);
       this.joinRoom(c, room);
       return;
@@ -169,7 +169,7 @@ export class GameHub {
 
   private joinRoom(c: Conn, room: Room) {
     const m = room.addHuman(c.playerId, c.name, c.token, c.ws, c.ip);
-    if (!m) return this.err(c.ws, "room_full", "That room is full (5 players).");
+    if (!m) return this.err(c.ws, "room_full", `That room is full (${NET.maxPlayers} players).`);
     c.room = room;
     c.member = m;
     room.sendPhase(m);

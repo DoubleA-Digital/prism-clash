@@ -91,7 +91,16 @@ export function matchEndScreen(root: HTMLElement): Built {
           ? h("div.chaos", null, h("span.flame", null, "🔥"), h("div", null, h("div.lbl", null, "MOST CHAOTIC MOMENT"), h("div.txt", null, h("b", { style: { color: colorOf(chaos.playerId) } }, session.playerName(chaos.playerId)), ` dealt ${chaos.damage} damage in 3 seconds`)))
           : null,
       ),
-      h("div.end-actions", null, h("button.btn.primary", { onclick: () => session.rematch(), "data-nav": "1" }, "Rematch"), h("button.btn", { onclick: () => session.leave(), "data-nav": "1" }, "Main menu")),
+      // Practice: straight into a rematch. Online: back to the room's lobby (the host starts the
+      // next match from there, and whoever is still here comes along).
+      h(
+        "div.end-actions",
+        null,
+        session.isPractice
+          ? h("button.btn.primary", { onclick: () => session.rematch(), "data-nav": "1" }, "Rematch")
+          : h("button.btn.primary", { onclick: () => session.leaveMatch(), "data-nav": "1" }, "Back to lobby"),
+        h("button.btn", { onclick: () => session.leave(), "data-nav": "1" }, "Main menu"),
+      ),
     ),
   );
   // (The placement stinger plays from the game loop as the results arrive.)
