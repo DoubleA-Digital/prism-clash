@@ -3,11 +3,12 @@
 // through the v2 game audio module (playGameAudio). Shake and hit-stop only fire for events
 // near you or about you.
 
-import { FX, ITEMS, PLAYER, type GameEvent, type SolidKind, type SourceId } from "@prism/shared";
+import { FX, ITEMS, PLAYER, type GameEvent, type Solid, type SolidKind, type SourceId } from "@prism/shared";
 import { playGameAudio } from "../audio/gameAudio";
 import type { Camera } from "../render/camera";
 import type { Floor } from "../render/floor";
 import { itemColor, lootName, rarityColor } from "../render/items";
+import { breakColors } from "../render/terrain";
 import { colorHex, PAL } from "../render/palette";
 import type { Fx } from "./fx";
 import { PSHAPE } from "./particles";
@@ -35,8 +36,10 @@ export interface EventContext {
   onSelfHit: (amount: number) => void;
   /** Players who fired recently (minimap reveal). */
   firedAt: Map<number, number>;
-  /** Kind of a destructible by id (for break particles and sounds). */
+  /** Kind of a destructible by id (for break sounds). */
   solidKind: (id: number) => SolidKind | null;
+  /** The destructible itself (break particles in its own colors). */
+  solidOf: (id: number) => Solid | null;
   /** You were eliminated (the game starts spectating your killer). */
   onEliminated: (killer: number) => void;
   /** Rarity (0..3) of the gun a fighter holds (richer shot sounds). */
@@ -44,8 +47,6 @@ export interface EventContext {
   /** Where a fighter is, if visible (positional sounds for events without a position). */
   posOf: (id: number) => { x: number; y: number } | null;
 }
-
-const SOLID_COLORS: Partial<Record<SolidKind, string>> = { crate: "#c99a5b", barrel: "#ff8a2b", glass: "#8fe7ff", fence: "#ff2e88" };
 
 const near = (ec: EventContext, x: number, y: number, r = 900) => {
   const l = ec.listener();
@@ -121,25 +122,28 @@ export function handleEvent(ec: EventContext, e: GameEvent, immediate: boolean) 
       break;
     }
     case "solidHit": {
-      const kind = ec.solidKind(e.id);
-      const col = SOLID_COLORS[kind ?? "crate"] ?? PAL.crystal;
-      fx.particles.burst(e.x, e.y, 4, col, 220, 0.35, 4, PSHAPE.shard);
+      const solid = ec.solidOf(e.id);
+      const cols = solid ? breakColors(solid) : [PAL.crystal];
+      fx.particles.burst(e.x, e.y, 4, cols[0] ?? PAL.crystal, 220, 0.35, 4, PSHAPE.shard);
+      if (cols[1]) fx.particles.burst(e.x, e.y, 2, cols[1], 180, 0.3, 3, PSHAPE.shard);
       break;
     }
     case "solidBroken": {
-      const kind = ec.solidKind(e.id);
-      const col = SOLID_COLORS[kind ?? "crate"] ?? PAL.crystal;
+      const solid = ec.solidOf(e.id);
+      const kind = solid?.kind ?? "crate";
+      const cols = solid ? breakColors(solid) : [PAL.crystal];
+      const main = cols[0] ?? PAL.crystal;
       if (kind === "glass") {
         // Glass bursts into a spray of glinting shards that skitter across the floor.
-        fx.particles.burst(e.x, e.y, 36, col, 560, 0.9, 9, PSHAPE.shard);
+        fx.particles.burst(e.x, e.y, 36, cols[1] ?? main, 560, 0.9, 9, PSHAPE.shard);
         fx.particles.burst(e.x, e.y, 22, "#ffffff", 420, 0.55, 5, PSHAPE.shard);
-        fx.particles.burst(e.x, e.y, 14, "#d8fbff", 300, 0.35, 4, PSHAPE.spark);
-      } else if (kind === "crate") {
-        fx.particles.burst(e.x, e.y, 22, col, 480, 0.85, 11, PSHAPE.shard);
-        fx.particles.burst(e.x, e.y, 14, "#6b4a2e", 360, 1, 8, PSHAPE.shard);
-        fx.particles.burst(e.x, e.y, 10, "#d8d2c4", 200, 0.7, 14);
-      } else fx.particles.burst(e.x, e.y, 28, col, 520, 0.9, 10, PSHAPE.shard);
-      fx.ring(e.x, e.y, 10, 90, 0.4, col, 4);
+        fx.particles.burst(e.x, e.y, 14, main, 300, 0.35, 4, PSHAPE.spark);
+      } else {
+        // Splinters / panels in the solid's own colors, plus a puff of dust.
+        cols.forEach((c, i) => fx.particles.burst(e.x, e.y, i === 0 ? 20 : 10, c, 480 - i * 60, 0.85 + i * 0.1, 11 - i * 2, PSHAPE.shard));
+        if (kind === "crate") fx.particles.burst(e.x, e.y, 10, "#d8d2c4", 200, 0.7, 14);
+      }
+      fx.ring(e.x, e.y, 10, 90, 0.4, main, 4);
       if (near(ec, e.x, e.y)) cam.addTrauma(0.12);
       break;
     }

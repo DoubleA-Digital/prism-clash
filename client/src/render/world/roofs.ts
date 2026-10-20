@@ -196,6 +196,8 @@ export class Roofs {
 
   constructor(private map: MapDef) {
     this.alpha = map.roofs.map(() => 1);
+    // Signs are painted with the display font: repaint once it has loaded.
+    if (document.fonts.status !== "loaded") void document.fonts.ready.then(() => this.sprites.clear());
   }
 
   private sprite(i: number, r: Roof): RoofSprite {

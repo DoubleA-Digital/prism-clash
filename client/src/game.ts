@@ -73,6 +73,7 @@ export class Game {
       banner: (t, s, c) => this.hud.banner(t, s, c),
       onSelfHit: () => this.hud.selfHit(),
       solidKind: (id) => session.view?.map.solids[id - SOLID_ID_BASE]?.kind ?? null,
+      solidOf: (id) => session.view?.map.solids[id - SOLID_ID_BASE] ?? null,
       onEliminated: (killer) => {
         this.spectateId = killer;
       },
