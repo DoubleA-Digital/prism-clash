@@ -73,20 +73,20 @@ const artLoot = () =>
 
 const artReload = () =>
   demo((g, w, h) => {
-    drawWeaponIcon(g, "rifle", 2, w * 0.36, h / 2, 110, 40);
+    drawWeaponIcon(g, "rifle", 2, w * 0.28, h / 2, 104, 40);
     g.save();
     g.font = "800 22px 'JetBrains Mono', monospace";
     g.textBaseline = "middle";
     g.fillStyle = "#ffffff";
-    g.fillText("0", w * 0.66, h / 2);
+    g.fillText("0", w * 0.56, h / 2);
     g.fillStyle = "rgba(200,205,240,0.6)";
     g.font = "700 14px 'JetBrains Mono', monospace";
-    g.fillText("/ 90", w * 0.66 + 16, h / 2 + 2);
+    g.fillText("/ 90", w * 0.56 + 16, h / 2 + 2);
     g.strokeStyle = "#ffd34d";
     g.lineWidth = 3;
     g.lineCap = "round";
     g.beginPath();
-    g.arc(w * 0.86, h / 2, 13, -Math.PI / 2, Math.PI * 1.1);
+    g.arc(w * 0.88, h / 2, 13, -Math.PI / 2, Math.PI * 1.1);
     g.stroke();
     g.restore();
   });
@@ -112,6 +112,16 @@ const artSight = () =>
     const x1 = w * 0.55;
     const y0 = h * 0.22;
     const y1 = h * 0.78;
+    g.fillStyle = "#1f2152";
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = "rgba(124,246,255,0.06)";
+    g.lineWidth = 1;
+    for (let x = 0; x < w; x += 18) {
+      g.beginPath();
+      g.moveTo(x, 0);
+      g.lineTo(x, h);
+      g.stroke();
+    }
     // Shadow cast away from the viewer by the wall.
     const far = 400;
     const ext = (px: number, py: number) => {
@@ -120,7 +130,7 @@ const artSight = () =>
     };
     const [ax, ay] = ext(x0, y0);
     const [bx, by] = ext(x0, y1);
-    g.fillStyle = "rgba(3,3,14,0.75)";
+    g.fillStyle = "rgba(3,3,14,0.82)";
     g.beginPath();
     g.moveTo(x0, y0);
     g.lineTo(ax, ay);
@@ -139,23 +149,23 @@ const artSight = () =>
 
 const artBush = () =>
   demo((g, w, h) => {
-    hero(g, "glitch", hex(2), w * 0.5, h * 0.5, 46);
+    hero(g, "glitch", hex(2), w * 0.5, h * 0.36, 40);
     const blobs: [number, number, number, string][] = [
-      [-30, 8, 20, "#0e4a3f"], [28, 10, 20, "#0e4a3f"], [0, 14, 24, "#13604f"], [-14, -6, 18, "#13604f"], [16, -4, 18, "#17725d"], [0, 2, 16, "#1d8a6e"],
+      [-24, 8, 15, "#0e4a3f"], [24, 9, 15, "#0e4a3f"], [0, 12, 18, "#13604f"], [-11, -2, 13, "#13604f"], [12, -1, 13, "#17725d"], [0, 4, 12, "#1d8a6e"],
     ];
     g.save();
     g.globalAlpha = 0.93;
     for (const [dx, dy, r, c] of blobs) {
       g.fillStyle = c;
       g.beginPath();
-      g.arc(w * 0.5 + dx, h * 0.5 + dy, r, 0, Math.PI * 2);
+      g.arc(w * 0.5 + dx, h * 0.56 + dy, r, 0, Math.PI * 2);
       g.fill();
     }
     g.restore();
     g.strokeStyle = withAlpha("#5dffbe", 0.5);
     g.lineWidth = 1.5;
     g.beginPath();
-    g.arc(w * 0.5, h * 0.55, 40, 0, Math.PI * 2);
+    g.arc(w * 0.5, h * 0.6, 30, 0, Math.PI * 2);
     g.stroke();
   });
 
