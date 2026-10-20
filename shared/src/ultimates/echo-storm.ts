@@ -3,6 +3,9 @@
 // (v = ECHO_CAST or ECHO_RECAST, n = power index); when it expires the power fires again
 // from where you are, at your current aim. Echoes never echo themselves: the replay calls
 // the power directly and never goes through handleCasts.
+// With guns: an echoed Mirror Self is a second clone copying your gun; echoed buff powers
+// (Ricochet Prism, Third-Party, Void Cloak, Molten Path) stretch the buff by buffExtend of its
+// duration instead of refreshing it to the same length (powers/geometry.grantBuff).
 
 import { ULTIMATES } from "../config";
 import { defineUlt, powerDef } from "../sim/hooks";

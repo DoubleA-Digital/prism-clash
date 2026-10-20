@@ -1,5 +1,8 @@
-// OVERDRIVE: 6s of white-hot fury. Double fire rate with free shots, faster reload, and
-// every power cooldown snaps back to ready. The world's fire loop reads the status.
+// OVERDRIVE: 6s of white-hot fury with whatever gun you hold. Faster fire rate (and a faster
+// Prism Lance charge and Energy Blade swing), shots cost no ammo, a reload in progress
+// finishes at once, and every power cooldown snaps back to ready. Decision on ammo: free shots
+// (no magazine drain at all), since 6s of uninterrupted fire is the fantasy; the fire-rate
+// boost is 1.6x rather than 2x so rockets and the sniper stay sane. actFrame reads the status.
 
 import { ULTIMATES } from "../config";
 import { defineUlt } from "../sim/hooks";
@@ -12,7 +15,7 @@ const C = ULTIMATES.overdrive;
 export const overdrive = defineUlt({
   id: "overdrive",
   name: "Overdrive",
-  description: "For 6s: double fire rate, shots cost no ammo, and all your power cooldowns reset instantly.",
+  description: `For ${C.duration}s with any gun: ${C.fireRateMult}x fire rate, shots cost no ammo, reloads finish at once, and all your power cooldowns reset instantly.`,
   color: "#F4F8FF",
   drawIcon(ctx, size) {
     ultFrame(ctx, size, "#1d2a4a");

@@ -137,7 +137,7 @@ export function actFrame(p: Player, f: InputFrame, dt: number): FrameOut {
       }
     } else if (def.kind === "lance") {
       p.fireCd = Math.max(0, p.fireCd);
-      if (firing && w.mag > 0) p.charge = Math.min(1, p.charge + dt / def.chargeTime);
+      if (firing && w.mag > 0) p.charge = Math.min(1, p.charge + (dt * fireRate) / def.chargeTime);
       else if (!held && p.charge > 0) {
         if (!blocked && p.fireCd <= 0 && w.mag > 0) {
           out.lance = p.charge;

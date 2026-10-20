@@ -1,9 +1,12 @@
-// RICOCHET PRISM: for 6s your shots bounce off walls and cover up to 4 times, growing
-// stronger and shifting color each bounce (rainbow on the last). The bounce itself lives in
-// world.stepProjectile; this power grants the status and a prism aura everyone can see.
+// RICOCHET PRISM: for 6s your shots bounce off walls and cover, growing stronger and shifting
+// color each bounce (rainbow on the last). Works with every gun: bullets and shotgun pellets
+// ricochet, rockets bounce before they blow, and the Prism Lance beam gets extra reflections.
+// The bounce itself lives in the projectile step and weapons.fireLance; this power grants the
+// status and a prism aura everyone can see.
 
 import { POWERS } from "../config";
 import { definePower } from "../sim/hooks";
+import { grantBuff } from "./geometry";
 import { glow, poly } from "./icon";
 
 const C = POWERS.ricochetPrism;
@@ -14,7 +17,7 @@ const COLOR = "#FF7BF2";
 export const ricochetPrism = definePower({
   id: "ricochetPrism",
   name: "Ricochet Prism",
-  description: "For 6s your shots bounce off walls and cover up to 4 times, gaining damage and color each bounce. Rainbow on the last.",
+  description: `For ${C.duration}s your shots bounce off walls and cover up to ${C.maxBounces} times, +${Math.round(C.damagePerBounce * 100)}% damage each bounce. Any gun: rockets bounce, the Lance reflects more.`,
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size) {
@@ -32,9 +35,9 @@ export const ricochetPrism = definePower({
     }
   },
   onCast(w, p) {
-    w.addStatus(p, "ricochet", C.duration);
+    const left = grantBuff(w, p, "ricochet", C.duration);
     for (const e of w.effects.values()) if (e.kind === "prismAura" && e.owner === p.id) e.dead = true;
-    w.spawnEffect({ kind: "prismAura", owner: p.id, source: "ricochetPrism", x: p.x, y: p.y, r: p.r * 2, life: C.duration });
+    w.spawnEffect({ kind: "prismAura", owner: p.id, source: "ricochetPrism", x: p.x, y: p.y, r: p.r * 2, life: left });
     return true;
   },
   effects: {

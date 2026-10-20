@@ -1,5 +1,9 @@
 // PORTAL PAIR: first cast drops an orange portal, recast drops the blue one. Anything that
 // enters one exits the other with its momentum: players, every projectile, even tethers.
+// Portals sit where you stand, nudged out so their ring never sinks into a wall. Crossing a
+// map through a portal pair is the point (walls between the two portals don't matter), but the
+// exit side respects terrain: a player comes out at a clear spot, and a shot whose exit
+// would be inside a wall leaves from the portal's center instead.
 
 import { POWERS } from "../config";
 import { dist2 } from "../math/vec";
@@ -8,6 +12,7 @@ import type { Effect, Player, Projectile } from "../sim/types";
 import { PF, PROJ } from "../sim/types";
 import type { World } from "../sim/world";
 import { triggerCombo } from "./combos";
+import { clearSpot, walkTo } from "./geometry";
 import { circle, glow } from "./icon";
 
 const C = POWERS.portalPair;
@@ -16,6 +21,11 @@ const C = POWERS.portalPair;
 function partner(w: World, e: Effect): Effect | null {
   const p = e.link ? w.effects.get(e.link) : undefined;
   return p && !p.dead ? p : null;
+}
+
+/** Where a portal goes for a caster standing at (x, y): there, pushed clear of nearby walls. */
+function placeAt(w: World, x: number, y: number): { x: number; y: number } {
+  return clearSpot(w, x, y, C.placeClearance, x, y);
 }
 
 function exitPoint(e: Effect, vx: number, vy: number, clearance: number) {
@@ -52,20 +62,28 @@ export const portalPair = definePower({
     ctx.setLineDash([]);
   },
   onCast(w, p, slot) {
-    w.spawnEffect({ kind: "portal", owner: p.id, source: "portalPair", x: p.x, y: p.y, r: C.radius, life: C.placeWindow + C.duration, n: 0, angle: p.aim });
+    const at = placeAt(w, p.x, p.y);
+    w.spawnEffect({ kind: "portal", owner: p.id, source: "portalPair", x: at.x, y: at.y, r: C.radius, life: C.placeWindow + C.duration, n: 0, angle: p.aim });
     slot.recast = C.placeWindow;
     return true;
   },
   onRecast(w, p, slot) {
-    slot.recast = 0;
     const orange = [...w.effects.values()].find((e) => e.kind === "portal" && e.owner === p.id && e.n === 0 && !e.link && !e.dead);
-    if (!orange) return;
-    if (dist2(orange.x, orange.y, p.x, p.y) < (C.radius * 3) ** 2) {
-      // Too close to be useful: nudge the blue portal out along the aim.
-      const ok = w.insideArena(p.x + Math.cos(p.aim) * C.radius * 3, p.y + Math.sin(p.aim) * C.radius * 3, C.radius);
-      if (!ok) return;
+    if (!orange) {
+      slot.recast = 0;
+      return;
     }
-    const blue = w.spawnEffect({ kind: "portal", owner: p.id, source: "portalPair", x: p.x, y: p.y, r: C.radius, life: C.duration, n: 1, angle: p.aim, link: orange.id });
+    let at = placeAt(w, p.x, p.y);
+    if (dist2(orange.x, orange.y, at.x, at.y) < (C.radius * 3) ** 2) {
+      // Too close to be useful: walk the blue portal out along the aim (never through a wall).
+      // If there's no room, the press is ignored and the window stays open.
+      const reach = C.radius * 3.2;
+      const out = walkTo(w, p.x, p.y, p.x + Math.cos(p.aim) * reach, p.y + Math.sin(p.aim) * reach, C.placeClearance);
+      at = placeAt(w, out.x, out.y);
+      if (dist2(orange.x, orange.y, at.x, at.y) < (C.radius * 3) ** 2) return;
+    }
+    slot.recast = 0;
+    const blue = w.spawnEffect({ kind: "portal", owner: p.id, source: "portalPair", x: at.x, y: at.y, r: C.radius, life: C.duration, n: 1, angle: p.aim, link: orange.id });
     orange.link = blue.id;
     orange.life = orange.age + C.duration;
     w.emit({ t: "cast", by: p.id, power: "portalPair", x: p.x, y: p.y, angle: p.aim });
@@ -89,7 +107,8 @@ export const portalPair = definePower({
         out.hits.set(pl.id, w.time);
         const vx = pl.vx + pl.px;
         const vy = pl.vy + pl.py;
-        const exit = exitPoint(out, vx, vy, out.r + pl.r * 0.2);
+        const want = exitPoint(out, vx, vy, out.r + pl.r * 0.2);
+        const exit = clearSpot(w, want.x, want.y, pl.r, out.x, out.y);
         const from = { x: pl.x, y: pl.y };
         w.teleport(pl, exit.x, exit.y);
         w.emit({ t: "portal", x: from.x, y: from.y, x2: exit.x, y2: exit.y });
@@ -99,7 +118,8 @@ export const portalPair = definePower({
         const out = partner(w, e);
         if (!out) return;
         if (dist2(pr.x, pr.y, e.x, e.y) > (e.r + pr.r) ** 2) return;
-        const exit = exitPoint(out, pr.vx, pr.vy, out.r + pr.r + 2);
+        let exit = exitPoint(out, pr.vx, pr.vy, out.r + pr.r + 2);
+        if (w.blocked(out.x, out.y, exit.x, exit.y)) exit = { x: out.x, y: out.y };
         pr.x = exit.x;
         pr.y = exit.y;
         pr.portalCd = 0.3;

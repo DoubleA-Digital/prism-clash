@@ -1,6 +1,7 @@
 // GRAVITY FLIP: a swirling orb. Whoever it hits has their movement inverted for 2.5s
 // (movement.ts reads the "inverted" status). A "flip" effect follows the victim for the
-// duration so everyone can see who's scrambled.
+// duration so everyone can see who's scrambled. The orb is a projectile: walls and cover stop
+// it, and Magnetar, portals and Singularities affect it like any shot.
 
 import { POWERS } from "../config";
 import { definePower } from "../sim/hooks";

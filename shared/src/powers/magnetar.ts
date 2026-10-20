@@ -1,6 +1,10 @@
 // MAGNETAR: a field around you that rips enemy projectiles out of the air and spins them in
 // orbit (they stop doing damage). Recast, or let it run out, to fling them all outward as
 // your own shots. Catching shots frozen by a Time Bubble is the Frozen Harvest combo.
+// Any gun's projectiles are caught (bullets, every shotgun pellet, sniper rounds, rockets,
+// which explode for you when flung), plus power bolts; Prism Lance beams are instant and
+// can't be caught. The field doesn't reach through terrain: a shot on the far side of a wall
+// or a crate stays where it is.
 
 import { POWERS } from "../config";
 import { dist2, TAU } from "../math/vec";
@@ -33,7 +37,7 @@ function heldProjectiles(w: World, e: Effect): Projectile[] {
 }
 
 function capturable(pr: Projectile): boolean {
-  return pr.kind !== PROJ.meteor && pr.kind !== PROJ.singularityOrb && (pr.flags & PF.captured) === 0;
+  return pr.kind !== PROJ.meteor && pr.kind !== PROJ.singularityOrb && pr.kind !== PROJ.grenade && (pr.flags & PF.captured) === 0;
 }
 
 /** Flings everything held outward, evenly spread, as the field owner's shots. */
@@ -44,14 +48,21 @@ function release(w: World, e: Effect, owner: Player) {
   const n = list.length;
   list.forEach((pr, i) => {
     const a = e.angle + (i / n) * TAU;
+    const ox = owner.x + Math.cos(a) * C.orbitRadius;
+    const oy = owner.y + Math.sin(a) * C.orbitRadius;
+    // An orbit slot inside a wall launches from the owner instead (the shot leaves the open side).
+    const inWall = w.blocked(owner.x, owner.y, ox, oy);
     pr.owner = owner.id;
     pr.flags = (pr.flags & ~(PF.captured | PF.retargeted | PF.homing)) | PF.released;
-    pr.x = owner.x + Math.cos(a) * C.orbitRadius;
-    pr.y = owner.y + Math.sin(a) * C.orbitRadius;
+    pr.x = inWall ? owner.x : ox;
+    pr.y = inWall ? owner.y : oy;
     pr.vx = Math.cos(a) * C.releaseSpeed;
     pr.vy = Math.sin(a) * C.releaseSpeed;
+    // A fresh flight: falloff (shotgun pellets) restarts from here.
     pr.life = C.releaseLife;
+    pr.life0 = C.releaseLife;
     pr.damage = Math.max(pr.damage, C.minReleaseDamage);
+    pr.lastHit = 0;
     pr.shotId = 0;
     pr.portalCd = 0;
   });
@@ -61,7 +72,7 @@ function release(w: World, e: Effect, owner: Player) {
 export const magnetar = definePower({
   id: "magnetar",
   name: "Magnetar",
-  description: "A field that captures enemy shots into orbit around you for up to 5s. Recast to fire them all back out as your own.",
+  description: `A field that captures enemy shots from any gun into orbit around you for up to ${C.duration}s. Recast to fire them all back out as your own.`,
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {
@@ -131,6 +142,7 @@ export const magnetar = definePower({
         if (dist2(pr.x, pr.y, e.x, e.y) > e.r * e.r) return;
         e.hits ??= new Map();
         if (e.hits.size >= C.maxCaptured) return;
+        if (w.blocked(e.x, e.y, pr.x, pr.y)) return;
         // Frozen Harvest: plucking a shot out of a Time Bubble.
         for (const b of w.effects.values()) {
           if (b.kind === "bubble" && !b.dead && dist2(pr.x, pr.y, b.x, b.y) < b.r * b.r) {

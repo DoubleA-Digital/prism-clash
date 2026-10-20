@@ -1,6 +1,7 @@
 // METEOR RAIN: a wide area ahead of you is marked, then 12 meteors crash into it over 3s.
 // Every meteor shows its own filling warning circle first, so anyone paying attention can
-// weave between impacts.
+// weave between impacts. A wall between an impact and a player shields them; every crate,
+// barrel, glass pane and fence in an impact takes solidDamage (cover blocks are indestructible).
 
 import { ULTIMATES } from "../config";
 import { defineUlt } from "../sim/hooks";
@@ -62,7 +63,7 @@ function rainCenter(w: World, x: number, y: number, aim: number): { x: number; y
 export const meteorRain = defineUlt({
   id: "meteorRain",
   name: "Meteor Rain",
-  description: "Mark a wide area ahead of you: 12 meteors crash into it over 3s, each blasting for 22 after a warning circle.",
+  description: `Mark a wide area ahead of you: ${C.count} meteors crash into it over ${C.duration}s, each blasting for ${C.damage} and smashing crates and glass after a warning circle.`,
   color: "#FF7A2B",
   drawIcon(ctx, size) {
     ultFrame(ctx, size, "#5a1d06");
@@ -110,7 +111,8 @@ export const meteorRain = defineUlt({
       },
       onExpire(w, e) {
         if (e.n !== METEOR_ONE) return;
-        w.explode(e.x, e.y, C.impactRadius, C.damage, e.owner, "meteorRain", { knock: C.knock });
+        w.explode(e.x, e.y, C.impactRadius, C.damage, e.owner, "meteorRain", { knock: C.knock, walls: true, noSolids: true });
+        w.damageArea(e.x, e.y, C.impactRadius, C.solidDamage, e.owner);
       },
     },
   },

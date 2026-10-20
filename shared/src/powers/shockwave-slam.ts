@@ -1,6 +1,8 @@
 // SHOCKWAVE SLAM: leap into the air (airborne: immune to ground hazards and shots, can't
 // shoot), then crash down. Everyone in the radius is hurt and blasted outward; anyone the
-// blast drives into a wall takes bonus slam damage, and crates, glass and fences nearby crack.
+// blast drives into a wall or cover takes bonus slam damage, and the impact breaks crates,
+// glass and barrels near the landing spot (fences crack). The shockwave rolls over low cover
+// but not through walls: anyone behind a wall from the landing spot is untouched.
 // Combo (Gravity Slam): blast an enemy into a Singularity's detonation zone and the black
 // hole's detonation damage doubles.
 //
@@ -14,6 +16,7 @@ import { definePower } from "../sim/hooks";
 import type { Effect } from "../sim/types";
 import type { World } from "../sim/world";
 import { triggerCombo } from "./combos";
+import { wallBetween } from "./geometry";
 import { arc, glow, poly } from "./icon";
 
 const C = POWERS.shockwaveSlam;
@@ -33,6 +36,7 @@ function slam(w: World, e: Effect) {
   const knocked = new Map<number, number>();
   for (const p of w.playersNear(e.x, e.y, C.radius, owner.id)) {
     if ((p.status.airborne ?? 0) > 0) continue;
+    if (wallBetween(w, e.x, e.y, p.x, p.y)) continue;
     const dx = p.x - e.x;
     const dy = p.y - e.y;
     const d = Math.hypot(dx, dy);
@@ -43,7 +47,7 @@ function slam(w: World, e: Effect) {
     w.impulse(p, nx * C.knockback * f, ny * C.knockback * f);
     knocked.set(p.id, PENDING);
   }
-  // The impact cracks crates, glass and fences close to the landing spot.
+  // The impact breaks crates, glass and barrels close to the landing spot, and cracks fences.
   w.damageArea(e.x, e.y, C.radius * 0.6, C.solidDamage, owner.id);
   w.emit({ t: "explode", x: e.x, y: e.y, r: C.radius, source: "shockwaveSlam", by: owner.id });
   e.n = 1;
@@ -75,7 +79,7 @@ function aftermath(w: World, e: Effect) {
 export const shockwaveSlam = definePower({
   id: "shockwaveSlam",
   name: "Shockwave Slam",
-  description: "Leap into the air (immune to ground hazards), then slam down, blasting everyone nearby into walls for bonus damage.",
+  description: "Leap into the air (immune to ground hazards), then slam down, blasting everyone nearby into walls for bonus damage and smashing crates and glass.",
   color: "#3DE0FF",
   cooldown: C.cooldown,
   drawIcon(ctx, size, t) {

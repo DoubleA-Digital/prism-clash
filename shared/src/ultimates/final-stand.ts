@@ -2,7 +2,8 @@
 // p.absorbed while the `finalStand` status is on) and visibly fills a gold sphere. Then it
 // all comes back out as one shockwave: base + 0.8 × absorbed, capped, with big knockback.
 // Decision: while charging you can't shoot (fire cooldown held) and you move slowed, so the
-// counterplay is clear: stop shooting it and get out of the marked blast radius.
+// counterplay is clear: stop shooting it and get out of the marked blast radius, or get a wall
+// between you and it (walls shield the shockwave).
 
 import { ULTIMATES } from "../config";
 import { defineUlt } from "../sim/hooks";
@@ -58,7 +59,7 @@ export const finalStand = defineUlt({
         delete p.status.finalStand;
         const dmg = finalStandDamage(p.absorbed);
         p.absorbed = 0;
-        w.explode(p.x, p.y, C.radius, dmg, p.id, "finalStand", { knock: C.knockback });
+        w.explode(p.x, p.y, C.radius, dmg, p.id, "finalStand", { knock: C.knockback, walls: true });
       },
     },
   },

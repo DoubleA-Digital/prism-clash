@@ -2,10 +2,13 @@
 // you, clipped to the walls). For 3s it drags everyone but you toward it, then slams shut:
 // heavy damage to anyone within closeRadius of the line. The rift is drawn for its whole
 // life with a danger band and a quickening pulse, so the slam is always readable.
+// LOS exception, on purpose: the rift rips space itself, so it tears through buildings and its
+// pull and slam ignore walls. The slam also smashes every destructible near the seam.
 // Effect: (x, y)–(x2, y2) are the endpoints; n = 0 while pulling, 1 after the slam.
 
 import { ULTIMATES } from "../config";
 import { pointSegment } from "../math/vec";
+import { solidsInCircle } from "../sim/collision";
 import { defineUlt } from "../sim/hooks";
 import type { Effect } from "../sim/types";
 import type { World } from "../sim/world";
@@ -59,12 +62,25 @@ function slam(w: World, e: Effect) {
     const t = i / (n - 1);
     w.emit({ t: "explode", x: e.x + (e.x2 - e.x) * t, y: e.y + (e.y2 - e.y) * t, r: C.closeRadius, source: "riftCollapse", by: e.owner });
   }
+  // Everything breakable within closeRadius of the seam shatters (each solid once).
+  const broken = new Set<number>();
+  const steps = Math.max(1, Math.ceil(len / C.closeRadius));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = e.x + (e.x2 - e.x) * t;
+    const y = e.y + (e.y2 - e.y) * t;
+    for (const s of solidsInCircle(w.map, x, y, C.closeRadius)) {
+      if (broken.has(s.id) || s.maxHp <= 0) continue;
+      broken.add(s.id);
+      w.damageSolid(s, C.solidDamage, e.owner, true);
+    }
+  }
 }
 
 export const riftCollapse = defineUlt({
   id: "riftCollapse",
   name: "Rift Collapse",
-  description: "Tear a rift across the map along your aim. It drags enemies toward it for 3s, then slams shut for 45 to anyone near it.",
+  description: `Tear a rift across the map along your aim, through walls. It drags enemies toward it for ${C.pullTime}s, then slams shut for ${C.closeDamage} to anyone near it, shattering crates and glass.`,
   color: "#FF3DF0",
   drawIcon(ctx, size) {
     ultFrame(ctx, size, "#47063f");

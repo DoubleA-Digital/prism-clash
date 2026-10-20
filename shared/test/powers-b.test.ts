@@ -1,7 +1,7 @@
 // Powers part B on the real World: Molten Path, Boomerang Glaive, Gravity Flip, Bounty Beacon,
 // Decoy Swarm, Shockwave Slam, Third-Party, plus the Event Horizon Blade and Gravity Slam combos.
 import { describe, expect, test } from "vitest";
-import { addSolid, BTN, POWERS, TERRAIN, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
+import { addSolid, BTN, POWERS, TERRAIN, ULT_CHARGE, World, type Effect, type GameEvent, type InputFrame, type Player, type PowerId } from "@prism/shared";
 import { bountyTargets } from "../src/powers/bounty-beacon";
 import { GLAIVE } from "../src/powers/boomerang-glaive";
 
@@ -149,14 +149,16 @@ describe("Boomerang Glaive", () => {
     expect(m.fx("glaive").length).toBe(0);
   });
 
-  test("chips a crate and turns back when it hits one", () => {
+  test("chips a crate and bounces back off it", () => {
     const s = setup("boomerangGlaive", []);
     const crate = addSolid(s.w.map, "crate", 200, -30, 260, 30);
     s.cast();
     s.run(ticks(0.3));
-    expect(crate.hp).toBeLessThan(crate.maxHp);
+    expect(crate.hp).toBeCloseTo(crate.maxHp - POWERS.boomerangGlaive.solidDamage);
     const g = s.fx("glaive")[0];
-    expect(g?.n).not.toBe(GLAIVE.out);
+    expect(g).toBeDefined();
+    expect(g!.vx).toBeLessThan(0);
+    expect(g!.x).toBeLessThan(200);
   });
 
   test("Event Horizon Blade: a Singularity captures it into orbit and it shreds anyone near the hole", () => {
@@ -240,7 +242,8 @@ describe("Bounty Beacon", () => {
     s.run(1);
     expect(beacon.x).toBeCloseTo(100, 0);
     s.w.damage(leader, 10, other.id, "pistol");
-    expect(other.ult.charge).toBeGreaterThan(10);
+    expect(other.ult.charge).toBeCloseTo(10 * (ULT_CHARGE.perDamageDealt + POWERS.bountyBeacon.ultPerDamage));
+    expect(other.ult.charge).toBeGreaterThan(10 * ULT_CHARGE.perDamageDealt);
     s.run(ticks(POWERS.bountyBeacon.duration + 0.1));
     expect(leader.status.bountied ?? 0).toBe(0);
     expect(s.fx("beacon").length).toBe(0);
@@ -337,16 +340,17 @@ describe("Shockwave Slam", () => {
 });
 
 describe("Third-Party", () => {
-  test("double damage on targets someone else is hurting, even after you start hitting them", () => {
+  test("bonus damage on targets someone else is hurting, even after you start hitting them", () => {
     const s = setup("thirdParty", [[300, 0], [600, 0]]);
     const [target, brawler] = s.enemies as [Player, Player];
+    const boosted = Math.round(10 * POWERS.thirdParty.mult);
     s.cast();
     expect(s.caster.status.thirdParty ?? 0).toBeGreaterThan(4);
     expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(10);
     s.w.damage(target, 5, brawler.id, "pistol");
-    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(20);
+    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(boosted);
     // The brawler's hit still counts after our own hit.
-    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(20);
+    expect(s.w.damage(target, 10, s.caster.id, "pistol")).toBe(boosted);
     // The other player stops: the bonus fades after the window.
     s.run(ticks(POWERS.thirdParty.recentWindow + 0.1));
     expect(s.w.damage(target, 5, s.caster.id, "pistol")).toBe(5);

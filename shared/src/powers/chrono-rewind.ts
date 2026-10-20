@@ -1,10 +1,13 @@
 // CHRONO REWIND: snap back to where you were 2.5s ago and undo the damage taken since.
-// Everyone sees a chain of ghostly afterimages replaying your path backwards.
+// Everyone sees a chain of ghostly afterimages replaying your path backwards. Terrain only ever
+// breaks (never appears), so a past spot is always open; the landing still goes through the
+// map's collision resolve so it can never end inside geometry.
 
 import { POWERS } from "../config";
 import { definePower } from "../sim/hooks";
 import type { Player } from "../sim/types";
 import type { World } from "../sim/world";
+import { clearSpot } from "./geometry";
 import { arc, circle, glow, poly } from "./icon";
 
 const C = POWERS.chronoRewind;
@@ -66,7 +69,8 @@ export const chronoRewind = definePower({
     p.px = 0;
     p.py = 0;
     p.dashT = 0;
-    w.teleport(p, past.x, past.y);
+    const spot = clearSpot(w, past.x, past.y, p.r, p.x, p.y);
+    w.teleport(p, spot.x, spot.y);
     w.addStatus(p, "invulnerable", C.arriveInvuln);
     return true;
   },

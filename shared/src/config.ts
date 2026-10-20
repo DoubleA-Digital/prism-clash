@@ -236,8 +236,11 @@ export const INTEREST = {
   lootRange: 2600,
 } as const;
 
+/** v2 retune: guns are the main damage source now. A typical fighter who reaches the mid game
+ *  deals ~280 and takes ~200 (armor and heals included) over a 6-8 minute match:
+ *  280 × 0.5 + 200 × 0.3 = 200 charge = about two ultimates. Winners get four or five. */
 export const ULT_CHARGE = {
-  perDamageDealt: 0.45,
+  perDamageDealt: 0.5,
   perDamageTaken: 0.3,
   max: 100,
 } as const;
@@ -283,15 +286,27 @@ export const GHOST = {
 
 export const HAZARD_TICK = 0.25;
 
-/** Powers. Cooldowns are in seconds; everything a power uses lives here. */
+/** Powers. Cooldowns are in seconds; everything a power uses lives here.
+ *  v2 retune: guns are the main damage source, so powers that multiply gun damage (Ricochet,
+ *  Third-Party, Time Bubble, Mirror Self, Bounty Beacon's ult charge) were toned down to
+ *  complement a gun instead of replacing it, and terrain interactions got their own numbers. */
 export const POWERS = {
   chronoRewind: { cooldown: 14, window: 2.5, trailPoints: 9, trailLife: 1.1, arriveInvuln: 0.2 },
   singularity: { cooldown: 16, speed: 540, orbRadius: 28, fuse: 0.8, duration: 2.5, radius: 330, pull: 1900, projectilePull: 2400, damage: 25, coreRadius: 70, detonateRadius: 160 },
-  mirrorSelf: { cooldown: 18, duration: 6, damageMult: 0.4, fireCooldown: 0.34, hp: 33, radius: 22, aimDistance: 420 },
-  portalPair: { cooldown: 15, duration: 10, radius: 46, exitCooldown: 0.35, placeWindow: 6 },
-  stormTether: { cooldown: 13, speed: 1500, range: 720, maxLength: 470, snapDamage: 30, chipDps: 3, duration: 5, boltDamage: 6, boltRadius: 10, chipInterval: 0.5, snapLinger: 0.45, slack: 140 },
-  timeBubble: { cooldown: 17, duration: 4, radius: 260, slow: 0.25, exitSpeedMult: 1.6, exitDamageMult: 1.2 },
-  ricochetPrism: { cooldown: 14, duration: 6, maxBounces: 4, damagePerBounce: 0.22 },
+  /** The clone copies the gun in hand (pellets, rockets, a lance beam, a blade swing) at
+   *  damageMult, firing at most every max(fireCooldown, the gun's own cooldown). sideOffset:
+   *  where it splits off (it slides along walls, never through them). */
+  mirrorSelf: { cooldown: 18, duration: 6, damageMult: 0.35, fireCooldown: 0.34, hp: 33, radius: 22, aimDistance: 420, sideOffset: 70 },
+  /** placeClearance: portals are nudged out of walls so their ring never sinks into one. */
+  portalPair: { cooldown: 15, duration: 10, radius: 46, exitCooldown: 0.35, placeWindow: 6, placeClearance: 30 },
+  /** A wall cutting the chain for wallBreak seconds breaks it (no snap damage: ducking behind
+   *  a wall is the escape). */
+  stormTether: { cooldown: 13, speed: 1500, range: 720, maxLength: 470, snapDamage: 30, chipDps: 3, duration: 5, boltDamage: 6, boltRadius: 10, chipInterval: 0.5, snapLinger: 0.45, slack: 140, wallBreak: 0.3 },
+  timeBubble: { cooldown: 17, duration: 4, radius: 260, slow: 0.25, exitSpeedMult: 1.6, exitDamageMult: 1.15 },
+  /** Bounces apply to every gun: bullets and pellets ricochet, rockets bounce before they
+   *  blow, the Prism Lance beam gets lanceBounces extra reflections. A bounce refreshes the
+   *  shot's flight to at least bounceLife seconds. */
+  ricochetPrism: { cooldown: 14, duration: 6, maxBounces: 3, damagePerBounce: 0.15, lanceBounces: 2, bounceLife: 0.5 },
   phantomMark: { cooldown: 11, dashSpeedMult: 3.6, dashDuration: 0.22, fuse: 1.5, damage: 20, shotMult: 2, markPad: 18, iframePad: 0.06, burstRadius: 90, streakLinger: 0.45 },
   /** coneDeg is the half-angle either side of the aim. */
   hexSwap: { cooldown: 20, range: 900, coneDeg: 32, retargetWithin: 0.6, retargetPad: 14, lavaLockSlow: 1.4, flashLife: 0.55 },
@@ -303,37 +318,45 @@ export const POWERS = {
   /** Outbound: decelerates from outSpeed to 0 over `range` while curving sideways (curve = peak
    *  sideways speed as a fraction of outSpeed). Then it flies back to the throw point at
    *  returnSpeed; within catchAssist of the thrower it's pulled into their hand (caught within
-   *  catchRadius). Hitting a wall turns it around early (and chips destructibles). In a Singularity it orbits. */
+   *  catchRadius). It bounces off walls and cover (each contact hits destructibles for solidDamage);
+   *  after wallBounces contacts it shatters. In a Singularity it orbits. */
   boomerangGlaive: {
     cooldown: 8, outSpeed: 980, range: 560, damage: 18, radius: 22, catchRadius: 52, hitCooldown: 0.35,
-    curve: 0.24, returnSpeed: 1150, returnSteer: 7, catchAssist: 120, maxFlight: 4, knockback: 260, solidDamage: 8, caughtLinger: 0.45,
+    curve: 0.24, returnSpeed: 1150, returnSteer: 7, catchAssist: 120, maxFlight: 4, knockback: 260, solidDamage: 18, wallBounces: 4, caughtLinger: 0.45,
     captureRadius: 170, orbitRadius: 95, orbitSpeed: 7, orbitHitRadius: 150,
   },
   gravityFlip: { cooldown: 19, speed: 760, radius: 18, duration: 2.5, damage: 8, range: 860 },
-  bountyBeacon: { cooldown: 22, duration: 6, ultPerDamage: 1.4 },
+  bountyBeacon: { cooldown: 22, duration: 6, ultPerDamage: 0.5 },
   /** Decoys burst out at `speed`, slow with `drag`, then wander at wanderSpeed. A hit pops one:
    *  enemies within flashRadius are blinded for flashBlind seconds. */
   decoySwarm: { cooldown: 15, count: 5, speed: 420, life: 4, flashRadius: 170, flashBlind: 1.1, radius: 17, drag: 2.4, wanderSpeed: 150, wanderTurn: 7 },
   /** Knockback falls off to minKnock (fraction) at the edge. Anyone knocked into a wall within
    *  comboWindow takes wallBonus × TERRAIN.wallSlamDamage extra; anyone knocked into a
    *  Singularity's detonation zone within comboWindow triggers Gravity Slam. */
-  shockwaveSlam: { cooldown: 12, airTime: 0.45, radius: 260, knockback: 1450, damage: 14, wallBonus: 1.0, minKnock: 0.6, comboWindow: 0.8, solidDamage: 30 },
+  shockwaveSlam: { cooldown: 12, airTime: 0.45, radius: 260, knockback: 1450, damage: 14, wallBonus: 1.0, minKnock: 0.6, comboWindow: 0.8, solidDamage: 55 },
   /** Targets someone else hurt within recentWindow take mult damage from you; the caster sees
    *  a crosshair on them that lingers markerLinger after they stop qualifying. */
-  thirdParty: { cooldown: 18, duration: 5, recentWindow: 1.0, mult: 2, markerLinger: 0.25 },
+  thirdParty: { cooldown: 18, duration: 5, recentWindow: 1.0, mult: 1.5, markerLinger: 0.25 },
 } as const;
 
 export const ULTIMATES = {
   /** Meteors land at evenly spread (jittered) points of a disc centered `centerDist` along your
    *  aim (pulled back toward you if that's outside the map). Each shows its warning circle
-   *  for `warn` seconds; impacts are spread over `duration`. */
-  meteorRain: { count: 12, duration: 3, radius: 420, impactRadius: 95, damage: 24, warn: 0.75, centerDist: 420, jitter: 0.35, knock: 420, trackEvery: 2, trackJitter: 40 },
-  /** fireRateMult divides the weapon cooldown (and shots cost no ammo); reloadMult speeds reloads. */
-  overdrive: { duration: 6, fireRateMult: 2, reloadMult: 2.2 },
+   *  for `warn` seconds; impacts are spread over `duration`. Walls shield players from an
+   *  impact; every destructible in it takes solidDamage (crates, glass and barrels break). */
+  meteorRain: { count: 12, duration: 3, radius: 420, impactRadius: 95, damage: 24, warn: 0.75, centerDist: 420, jitter: 0.35, knock: 420, trackEvery: 2, trackJitter: 40, solidDamage: 60 },
+  /** fireRateMult divides the gun's cooldown and speeds the Prism Lance charge. Decision: shots
+   *  cost no ammo (6s of free magazine is the fantasy; 1.6x instead of 2x keeps rockets and
+   *  snipers sane), a reload in progress finishes at once, reloadMult covers the rest. */
+  overdrive: { duration: 6, fireRateMult: 1.6, reloadMult: 2.2 },
   /** Pull is a per-second impulse (steady drift ≈ 180 u/s, slower than walking, so you can
-   *  fight it), scaled from nearMult on the line to farMult at farRange. */
-  riftCollapse: { pullTime: 3, pull: 1250, nearMult: 1.25, farMult: 0.6, farRange: 1200, closeDamage: 45, closeRadius: 150, closeKnock: 650, halfLength: 900, afterglow: 0.5 },
-  echoStorm: { duration: 8, echoDelay: 0.25 },
+   *  fight it), scaled from nearMult on the line to farMult at farRange.
+   *  The rift tears through buildings (it rips space itself: pull and slam ignore walls), and the
+   *  slam smashes every destructible within closeRadius of the seam for solidDamage. */
+  riftCollapse: { pullTime: 3, pull: 1250, nearMult: 1.25, farMult: 0.6, farRange: 1200, closeDamage: 45, closeRadius: 150, closeKnock: 650, halfLength: 900, afterglow: 0.5, solidDamage: 200 },
+  /** A buff power (Ricochet, Third-Party, Void Cloak, Molten Path) cast again while it's still
+   *  running, as an echo does, adds buffExtend × its duration instead of a wasted refresh. */
+  echoStorm: { duration: 8, echoDelay: 0.25, buffExtend: 0.5 },
   /** While charging you're immune (damage is absorbed), slowed and can't shoot. */
   finalStand: { charge: 3, baseDamage: 20, absorbMult: 0.8, maxDamage: 75, radius: 380, knockback: 900 },
   huntersEye: { duration: 8, homingTurn: 3.2, homingRange: 520 },

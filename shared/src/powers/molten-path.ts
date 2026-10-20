@@ -1,12 +1,15 @@
 // MOLTEN PATH: for 4s you bleed lava. Every drop is a capsule back to the previous one, so
 // the trail is one solid ribbon that burns anyone on the ground for 3s. Airborne players
 // (Shockwave Slam) are immune. Hex Swap looks for these (kind "molten", owner = caster).
+// A drop only joins the previous one when nothing solid lies between them, so a portal hop or
+// a swap never stretches a lava ribbon through a wall.
 
 import { HAZARD_TICK, NET, POWERS } from "../config";
 import { dist2 } from "../math/vec";
 import { definePower } from "../sim/hooks";
 import type { Effect, Player } from "../sim/types";
 import type { World } from "../sim/world";
+import { grantBuff } from "./geometry";
 import { glow, poly } from "./icon";
 
 const C = POWERS.moltenPath;
@@ -45,7 +48,7 @@ export function onMolten(e: Effect, p: Player): boolean {
 function dropLava(w: World, p: Player) {
   const m = drops(w);
   const prev = m.get(p.id);
-  const linked = !!prev && dist2(prev.x, prev.y, p.x, p.y) < (C.radius * 3) ** 2;
+  const linked = !!prev && dist2(prev.x, prev.y, p.x, p.y) < (C.radius * 3) ** 2 && !w.blocked(prev.x, prev.y, p.x, p.y);
   w.spawnEffect({
     kind: "molten", owner: p.id, source: "moltenPath", x: p.x, y: p.y, r: C.radius, life: C.trailLife,
     // n = 1: capsule joined to the previous drop at (x2, y2).
@@ -86,7 +89,9 @@ export const moltenPath = definePower({
     poly(ctx, [[size * 0.34, -size * 0.14], [size * 0.4, -size * 0.26 * f], [size * 0.34, -size * 0.32 * f], [size * 0.28, -size * 0.24 * f]], true, true);
   },
   onCast(w, p) {
-    w.addStatus(p, "molten", C.duration);
+    const fresh = (p.status.molten ?? 0) <= 0;
+    grantBuff(w, p, "molten", C.duration);
+    if (!fresh) return true;
     drops(w).delete(p.id);
     dropLava(w, p);
     return true;

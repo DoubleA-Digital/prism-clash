@@ -5,6 +5,7 @@
 import { NET, POWERS, ULTIMATES, WEAPONS } from "../config";
 import { dist2, sweepCircle } from "../math/vec";
 import { sweepSolids } from "./collision";
+import { bulletBlocked } from "./los";
 import { effectHooks, projectileExpireHook, projectileHitHook } from "./hooks";
 import { stepGrenade } from "./throwables";
 import type { Effect, Player, Projectile } from "./types";
@@ -76,12 +77,14 @@ export function stepProjectile(w: World, pr: Projectile, dt: number, asOfTick = 
     const hy = oy + (ny - oy) * wall.t;
     const s = wall.solid;
     const rocket = pr.kind === PROJ.rocket;
+    const canBounce = pr.bounces < pr.maxBounces;
     if (s.maxHp > 0 && !rocket) w.damageSolid(s, pr.weapon ? pr.damage * 0.6 : 4, pr.owner, false, hx, hy);
-    if (rocket) {
+    // Rockets blow on terrain, unless they still have Ricochet bounces left.
+    if (rocket && !canBounce) {
       detonateRocket(w, pr, hx + wall.nx * 4, hy + wall.ny * 4);
       return;
     }
-    if (pr.bounces < pr.maxBounces) {
+    if (canBounce) {
       pr.x = hx + wall.nx * 0.5;
       pr.y = hy + wall.ny * 0.5;
       const vn = pr.vx * wall.nx + pr.vy * wall.ny;
@@ -91,6 +94,11 @@ export function stepProjectile(w: World, pr: Projectile, dt: number, asOfTick = 
       return;
     }
     w.emit({ t: "impact", x: hx, y: hy, color: w.colorOf(pr.owner), size: 1 });
+    // A power projectile that hits terrain ends right there, like running out of flight
+    // (a Singularity orb collapses against the wall instead of vanishing).
+    pr.x = hx;
+    pr.y = hy;
+    projectileExpireHook(pr.source)?.(w, pr);
     w.killProjectile(pr);
     return;
   }
@@ -123,7 +131,7 @@ export function stepProjectile(w: World, pr: Projectile, dt: number, asOfTick = 
 function bounce(w: World, pr: Projectile) {
   pr.bounces++;
   pr.damage *= 1 + POWERS.ricochetPrism.damagePerBounce;
-  pr.life = Math.max(pr.life, 0.5);
+  pr.life = Math.max(pr.life, POWERS.ricochetPrism.bounceLife);
   w.emit({ t: "bounce", x: pr.x, y: pr.y, n: pr.bounces });
 }
 
@@ -131,9 +139,10 @@ function steerHoming(w: World, pr: Projectile, dt: number) {
   let best: Player | null = null;
   let bd = ULTIMATES.huntersEye.homingRange ** 2;
   for (const p of w.players.values()) {
-    if (!p.alive || p.id === pr.owner) continue;
+    if (!p.alive || p.id === pr.owner || (p.status.airborne ?? 0) > 0) continue;
     const d = dist2(pr.x, pr.y, p.x, p.y);
-    if (d < bd) {
+    // Homing only locks onto targets the shot has a clear line to: it never bends around walls or cover.
+    if (d < bd && !bulletBlocked(w.map, pr.x, pr.y, p.x, p.y)) {
       bd = d;
       best = p;
     }
@@ -188,7 +197,7 @@ function falloff(pr: Projectile): number {
   if (!pr.weapon) return 1;
   const min = WEAPONS[pr.weapon].falloffMin;
   if (min >= 1 || pr.life0 <= 0) return 1;
-  const traveled = 1 - Math.max(0, pr.life) / pr.life0;
+  const traveled = Math.max(0, 1 - Math.max(0, pr.life) / pr.life0);
   return 1 - (1 - min) * Math.min(1, traveled);
 }
 
@@ -204,10 +213,6 @@ export function hitPlayer(w: World, pr: Projectile, target: Player, x: number, y
   else {
     const dealt = w.damage(target, pr.damage * falloff(pr), pr.owner, pr.source, { crit, x, y });
     if (dealt > 0 && w.players.has(pr.owner)) w.stat(pr.owner).hits++;
-    // Phantom Mark: a gun shot on a marked target doubles the sigil.
-    if (pr.kind === PROJ.basic) {
-      for (const e of w.effects.values()) if (e.kind === "sigil" && e.link === target.id && e.owner === pr.owner && !e.dead) e.n = 1;
-    }
   }
   w.emit({ t: "impact", x, y, color: w.colorOf(pr.owner), size: crit ? 2 : 1 });
   if (pr.pierce > 0 && !hook) {

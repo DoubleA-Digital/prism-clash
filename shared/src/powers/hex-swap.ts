@@ -1,5 +1,7 @@
-// HEX SWAP: trade places with the nearest enemy in your aim cone. Enemy shots about to hit
-// you curve onto them instead. Swapping someone onto a molten trail locks them in the lava.
+// HEX SWAP: trade places with the nearest enemy in your aim cone that you can see (walls and
+// smoke block the hex). Enemy shots about to hit you curve onto them instead. Swapping someone
+// onto a molten trail locks them in the lava. Both ends of a swap are spots a fighter was just
+// standing on, and each is still checked against the map, so nobody lands inside geometry.
 
 import { POWERS } from "../config";
 import { angleDiff, dist2 } from "../math/vec";
@@ -8,6 +10,7 @@ import type { Player, Projectile } from "../sim/types";
 import { PF } from "../sim/types";
 import type { World } from "../sim/world";
 import { triggerCombo } from "./combos";
+import { clearSpot, inSight } from "./geometry";
 import { glow, ngon, poly } from "./icon";
 
 const C = POWERS.hexSwap;
@@ -23,6 +26,7 @@ function findTarget(w: World, p: Player): Player | null {
     const d = dist2(p.x, p.y, o.x, o.y);
     if (d > bd) continue;
     if (Math.abs(angleDiff(p.aim, Math.atan2(o.y - p.y, o.x - p.x))) > CONE) continue;
+    if (!inSight(w, p.x, p.y, o.x, o.y)) continue;
     bd = d;
     best = o;
   }
@@ -51,7 +55,7 @@ function incoming(w: World, p: Player, swappedWith: Player) {
 export const hexSwap = definePower({
   id: "hexSwap",
   name: "Hex Swap",
-  description: "Swap places with the nearest enemy you're aiming at. Shots about to hit you curve onto them instead.",
+  description: "Swap places with the nearest enemy you're aiming at and can see. Shots about to hit you curve onto them instead.",
   color: COLOR,
   cooldown: C.cooldown,
   drawIcon(ctx, size) {
@@ -75,8 +79,10 @@ export const hexSwap = definePower({
     const threats = incoming(w, p, t);
     const ax = p.x;
     const ay = p.y;
-    w.teleport(p, t.x, t.y);
-    w.teleport(t, ax, ay);
+    const toCaster = clearSpot(w, t.x, t.y, p.r, t.x, t.y);
+    const toTarget = clearSpot(w, ax, ay, t.r, ax, ay);
+    w.teleport(p, toCaster.x, toCaster.y);
+    w.teleport(t, toTarget.x, toTarget.y);
     p.px = 0;
     p.py = 0;
     t.px = 0;

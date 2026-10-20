@@ -1,6 +1,9 @@
 // TIME BUBBLE: a dome where everyone but the caster runs at 25% speed, enemy shots included.
 // The caster's own shots leaving the dome are flung out faster and harder.
 // (The world already slows players inside a bubble; this file handles projectiles.)
+// Any gun's projectiles are slowed or boosted (pellets, rockets, sniper rounds). LOS exception,
+// on purpose: the dome is a region of slowed time, so it covers everything inside its radius,
+// walls or not.
 
 import { POWERS } from "../config";
 import { dist2 } from "../math/vec";
