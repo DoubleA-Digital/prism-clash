@@ -33,11 +33,13 @@ describe("room", () => {
     expect(r.hostId).toBe(2);
   });
 
-  test("a full room refuses a 6th player", () => {
+  test("a full room (10 humans) refuses an 11th player; every human gets their own color", () => {
     const r = mkRoom();
-    for (let i = 1; i <= 5; i++) r.addHuman(i, `P${i}`, `t${i}`, fakeWs().ws, "ip");
+    for (let i = 1; i <= NET.maxPlayers; i++) r.addHuman(i, `P${i}`, `t${i}`, fakeWs().ws, "ip");
     expect(r.isFull()).toBe(true);
-    expect(r.addHuman(6, "Late", "t6", fakeWs().ws, "ip")).toBeNull();
+    expect(NET.maxPlayers).toBe(10);
+    expect(r.addHuman(99, "Late", "t99", fakeWs().ws, "ip")).toBeNull();
+    expect(new Set([...r.members.values()].map((m) => m.color)).size).toBe(NET.maxPlayers);
   });
 
   test("bots fill the room and the match starts", () => {
@@ -46,7 +48,8 @@ describe("room", () => {
     r.handle(a, { type: C2S.start });
     expect(r.members.size).toBe(MATCH.fighters);
     expect(r.phase).toBe("ultSelect");
-    // Bots get colors beyond the five human ones, all distinct.
+    // Ten fighters, ten distinct colors.
+    expect(MATCH.fighters).toBe(10);
     expect(new Set([...r.members.values()].map((m) => m.color)).size).toBe(MATCH.fighters);
   });
 
@@ -96,7 +99,7 @@ describe("room", () => {
     const end = msgs.find((m) => m.type === S2C.matchEnd);
     expect(end && end.type === S2C.matchEnd && end.stats.length).toBe(MATCH.fighters);
     if (end && end.type === S2C.matchEnd) expect(end.stats.find((s) => s.place === 1)?.playerId).toBe(end.winnerId);
-    // Snapshots never carried all 12 fighters at once to a viewer that can't see them.
+    // Snapshots never carried all 10 fighters at once to a viewer that can't see them.
     const snaps = msgs.filter((m) => m.type === S2C.snapshot);
     expect(snaps.length).toBeGreaterThan(100);
   });

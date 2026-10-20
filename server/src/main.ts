@@ -170,7 +170,7 @@ function handle(c: Conn, msg: ClientMsg) {
     const room = rooms.get(code);
     if (!room) return err(c.ws, "no_room", `No room called ${code}. Check the code with your friend.`);
     if (c.room === room) return;
-    if (room.isFull()) return err(c.ws, "room_full", "That room is full (5 players).");
+    if (room.isFull()) return err(c.ws, "room_full", `That room is full (${NET.maxPlayers} players).`);
     if (c.room) leave(c);
     joinRoom(c, room);
     return;
@@ -187,7 +187,7 @@ function handle(c: Conn, msg: ClientMsg) {
 
 function joinRoom(c: Conn, room: Room) {
   const m = room.addHuman(c.playerId, c.name, c.token, c.ws, c.ip);
-  if (!m) return err(c.ws, "room_full", "That room is full (5 players).");
+  if (!m) return err(c.ws, "room_full", `That room is full (${NET.maxPlayers} players).`);
   c.room = room;
   c.member = m;
   room.sendPhase(m);

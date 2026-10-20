@@ -1,6 +1,7 @@
 // Title screen + main menu: name, Create room, Join (code), Practice vs bots, Settings and
 // How to Play. Keyboard (arrows/Enter) and gamepad (D-pad/A) navigable, mouse parallax on the logo.
 
+import { MATCH } from "@prism/shared";
 import { session } from "../net/session";
 import { h, raw } from "./dom";
 import { keyLabel, type Input } from "../input/input";
@@ -119,7 +120,7 @@ export function menuScreen(actions: MenuActions, input: Input): Built {
         raw("div", "prism-fan", PRISM_SVG),
         h("h1.logo", { "aria-label": "Prism Clash" }, word("PRISM"), word("CLASH", ".sub")),
       ),
-      h("div.tagline", null, "Neon looter-shooter", h("i"), "12 fighters", h("i"), "Last one standing"),
+      h("div.tagline", null, "Neon looter-shooter", h("i"), `${MATCH.fighters} fighters`, h("i"), "Last one standing"),
       card,
     ),
     h("div.keyhints", null, hint(`${b.up}`, ""), hint(b.left, ""), hint(b.down, ""), hint(b.right, " move"), hint(b.shoot, " shoot"), hint(b.reload, " reload"), hint(b.interact, " pick up"), hint(b.slot1, ""), hint(b.slot2, " weapons"), hint(b.heal, " heal"), hint(b.throw, " grenade"), hint(b.dash, " dash"), hint(b.p1, ""), hint(b.p2, " powers"), hint(b.ult, " ultimate"), h("span", null, "Gamepad supported")),

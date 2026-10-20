@@ -22,14 +22,16 @@ export const NET = {
   maxRooms: 200,
   roomCodeLength: 5,
   /** Humans per room. Bots fill the rest of MATCH.fighters. */
-  maxPlayers: 5,
+  maxPlayers: 10,
   nameMaxLength: 16,
   /** The alive-player list rides on a snapshot when it changes, and at least this often. */
   aliveListEveryTicks: 30,
   version: 2,
 } as const;
 
-/** The first five are the colors humans pick from in the lobby; bots take the rest. */
+/** One color (and colorblind shape marker) per fighter seat. Humans pick theirs in the lobby,
+ *  bots take what's left. The last five were chosen to stay apart from each other, from the
+ *  first five and from the rarity glows (CIEDE2000 distance of 20+ to every other color). */
 export const PLAYER_COLORS = [
   { id: 0, name: "Cyan", hex: "#00F0FF", shape: "circle" },
   { id: 1, name: "Magenta", hex: "#FF2E88", shape: "triangle" },
@@ -37,14 +39,14 @@ export const PLAYER_COLORS = [
   { id: 3, name: "Gold", hex: "#FFC83D", shape: "diamond" },
   { id: 4, name: "Violet", hex: "#A970FF", shape: "cross" },
   { id: 5, name: "Orange", hex: "#FF8A2B", shape: "star" },
-  { id: 6, name: "Teal", hex: "#2BFFC8", shape: "hex" },
-  { id: 7, name: "Rose", hex: "#FF7BD5", shape: "ring" },
-  { id: 8, name: "Sky", hex: "#5FA8FF", shape: "circle" },
-  { id: 9, name: "Ember", hex: "#FF4A4A", shape: "triangle" },
-  { id: 10, name: "Mint", hex: "#B6FF8F", shape: "square" },
-  { id: 11, name: "Pearl", hex: "#E8E4FF", shape: "diamond" },
+  { id: 6, name: "Mint", hex: "#2BFFC0", shape: "hex" },
+  { id: 7, name: "Pink", hex: "#FFA6EC", shape: "ring" },
+  { id: 8, name: "Red", hex: "#FF3B3B", shape: "x" },
+  { id: 9, name: "Pearl", hex: "#FFFFE0", shape: "bowtie" },
 ] as const;
-export const HUMAN_COLORS = 5;
+export type PlayerShape = (typeof PLAYER_COLORS)[number]["shape"];
+/** Colors humans can pick from: all of them, since every seat can be a human. */
+export const HUMAN_COLORS = PLAYER_COLORS.length;
 
 export const PLAYER = {
   radius: 22,
@@ -271,7 +273,7 @@ export const KILL_CREDIT_SECONDS = 5;
 
 export const MATCH = {
   /** Total fighters in a match; bots fill the seats humans don't. */
-  fighters: 12,
+  fighters: 10,
   ultSelectSeconds: 12,
   draftSeconds: 12,
   countdownSeconds: 3,

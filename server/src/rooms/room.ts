@@ -1,4 +1,4 @@
-// One room: up to 5 humans plus bots filling the rest of the 12 fighter seats, the lobby,
+// One room: up to 10 humans, with bots filling the empty seats of the 10-fighter drop, the lobby,
 // and the match state machine:
 //   lobby → ultSelect → draft → countdown → round (one long battle royale) → matchEnd
 // The room ticks at 30 Hz; during the match it steps the authoritative World and sends
@@ -65,10 +65,9 @@ export class Room {
     return this.humans.length >= NET.maxPlayers || (this.phase !== "lobby" && this.members.size >= MATCH.fighters);
   }
 
-  private freeColor(human: boolean): number {
+  private freeColor(): number {
     const used = new Set([...this.members.values()].map((m) => m.color));
-    const pool = human ? PLAYER_COLORS.slice(0, HUMAN_COLORS) : [...PLAYER_COLORS.slice(HUMAN_COLORS), ...PLAYER_COLORS.slice(0, HUMAN_COLORS)];
-    return pool.find((c) => !used.has(c.id))?.id ?? this.rng.int(PLAYER_COLORS.length);
+    return PLAYER_COLORS.find((c) => !used.has(c.id))?.id ?? this.rng.int(PLAYER_COLORS.length);
   }
 
   private uniqueName(name: string, selfId: number): string {
@@ -84,7 +83,7 @@ export class Room {
   addHuman(id: number, name: string, token: string, ws: WebSocket, ip: string): Member | null {
     if (this.isFull()) return null;
     const m = newMember(id, this.uniqueName(name || "Player", id), token, false, ip, Date.now());
-    m.color = this.freeColor(true);
+    m.color = this.freeColor();
     m.ws = ws;
     m.ready = false;
     this.members.set(id, m);
@@ -143,7 +142,7 @@ export class Room {
     let id = 1_000_000 + this.rng.int(1e6);
     while (this.members.has(id)) id++;
     const m = newMember(id, name, "", true, "bot", Date.now());
-    m.color = this.freeColor(false);
+    m.color = this.freeColor();
     m.hero = this.botHero();
     this.members.set(id, m);
     this.bots.set(id, createBrain(this.settings.botDifficulty, this.rng.int(1e9)));

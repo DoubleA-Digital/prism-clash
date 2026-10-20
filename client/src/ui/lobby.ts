@@ -38,34 +38,41 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     };
 
     const nowReady = new Set(room.players.filter((p) => p.ready || p.host).map((p) => p.id));
-    const slots: HTMLElement[] = room.players.map((p, i) => {
-      const ready = p.ready || p.host || p.bot;
+    // Ten compact seats in two columns: portrait, name, hero + tags, a ready light, and (for the
+    // host) a small kick button.
+    const seats = room.players.filter((p) => !p.bot);
+    const slots: HTMLElement[] = seats.map((p, i) => {
+      const ready = p.ready || p.host;
       return h(
         `div.slot${p.id === session.myId ? ".me" : ""}${ready ? ".ready" : ""}`,
-        { style: { "--c": hex(p.color), "--i": String(i) } },
-        h("div.slot-hero", null, portraitCanvas(p.hero, hex(p.color), Math.round(rem(3.6)))),
-        h("div.who", null, h("div.name", null, p.name), h("div.hero-of", null, HEROES[p.hero].name)),
+        { style: { "--c": hex(p.color), "--i": String(i) }, title: p.name },
+        h("div.slot-hero", null, portraitCanvas(p.hero, hex(p.color), Math.round(rem(2.8)))),
         h(
-          "div.tags",
+          "div.who",
           null,
-          p.host ? h("span.tag.host", null, "HOST") : null,
-          p.bot ? h("span.tag.bot", null, "BOT") : null,
-          !p.connected ? h("span.tag", null, "AWAY") : null,
-          ready ? h(`span.tag.ready${prevReady.has(p.id) ? "" : ".fresh"}`, null, "READY") : h("span.tag", null, "NOT READY"),
-          host && p.id !== session.myId ? h("button.btn.small.danger", { onclick: () => session.kick(p.id), "aria-label": `Kick ${p.name}` }, "Kick") : null,
+          h("div.name", null, p.name),
+          h(
+            "div.meta",
+            null,
+            p.host ? h("span.tag.host", null, "HOST") : null,
+            !p.connected ? h("span.tag", null, "AWAY") : null,
+            h("span.hero-of", null, HEROES[p.hero].name),
+          ),
         ),
+        h(`span.rdy${ready ? ".on" : ""}${ready && !prevReady.has(p.id) ? ".fresh" : ""}`, { title: ready ? "Ready" : "Not ready", "aria-label": ready ? "Ready" : "Not ready" }, ready ? "✓" : ""),
+        host && p.id !== session.myId ? h("button.kick", { onclick: () => session.kick(p.id), "aria-label": `Kick ${p.name}`, title: `Kick ${p.name}` }, "×") : null,
       );
     });
     prevReady = nowReady;
     const fill = room.settings.fillBots;
-    for (let i = room.players.length; i < NET.maxPlayers; i++) {
-      const next = PLAYER_COLORS.slice(0, HUMAN_COLORS).find((c) => !room.players.some((p) => p.color === c.id))?.id ?? i % HUMAN_COLORS;
+    for (let i = seats.length; i < NET.maxPlayers; i++) {
+      const next = PLAYER_COLORS.find((c) => !room.players.some((p) => p.color === c.id))?.id ?? i % HUMAN_COLORS;
       slots.push(
         h(
           `div.slot.empty${fill ? ".bot" : ""}`,
           { style: { "--i": String(i) } },
-          coreCanvas(next, rem(2.7), { ghost: true }),
-          [h("span.pulse-dot"), fill ? "Open seat: share the code (bots fill in)" : "Open seat: share the code"],
+          coreCanvas(next, rem(2), { ghost: true }),
+          h("div.who", null, h("div.open", null, h("span.pulse-dot"), "Open seat"), h("div.meta", null, fill ? "a bot fills in" : "share the code")),
         ),
       );
     }
@@ -74,11 +81,11 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     const swatches = h(
       "div.swatches",
       null,
-      PLAYER_COLORS.slice(0, HUMAN_COLORS).map((c) =>
+      PLAYER_COLORS.map((c) =>
         h(
           `button.swatch${me?.color === c.id ? ".on" : ""}${taken.has(c.id) ? ".taken" : ""}`,
           { style: { "--c": c.hex }, title: c.name, "aria-label": `${c.name}${taken.has(c.id) ? " (taken)" : ""}`, "data-nav": "1", onclick: () => session.lobbySet({ color: c.id }) },
-          coreCanvas(c.id, rem(2.1), { ghost: false }),
+          coreCanvas(c.id, rem(1.75), { ghost: false }),
         ),
       ),
     );
@@ -91,7 +98,7 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     const waiting = humans.filter((p) => p.id !== room.hostId && !p.ready);
     const enoughPlayers = fill || room.players.length >= 2;
     const canStart = host && waiting.length === 0 && enoughPlayers;
-    const botsToAdd = fill ? MATCH.fighters - room.players.length : 0;
+    const botsToAdd = fill ? Math.max(0, MATCH.fighters - humans.length) : 0;
 
     let why: (HTMLElement | string)[];
     if (!host) why = ["Waiting for the host to start the match"];

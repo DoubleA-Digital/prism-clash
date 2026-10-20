@@ -143,10 +143,11 @@ export class Hud {
     const total = Math.max(g.alive, h.fighters);
     ctx.font = font(800, 28 * u, MONO);
     outlined(ctx, `${g.alive}`, ax - 14 * u, y + 42 * u, "#ffffff", "rgba(5,4,13,0.6)", 4 * u);
-    // One pip per fighter, two rows of six.
+    // One pip per fighter, in two rows.
+    const perRow = Math.min(6, Math.ceil(total / 2));
     for (let i = 0; i < total; i++) {
-      const px = ax + 10 * u + (i % 6) * 10 * u;
-      const py = y + 37 * u + Math.floor(i / 6) * 10 * u;
+      const px = ax + 10 * u + (i % perRow) * 10 * u;
+      const py = y + 37 * u + Math.floor(i / perRow) * 10 * u;
       ctx.beginPath();
       ctx.arc(px, py, 3.2 * u, 0, Math.PI * 2);
       ctx.fillStyle = i < g.alive ? "#ffffff" : "rgba(255,255,255,0.15)";
