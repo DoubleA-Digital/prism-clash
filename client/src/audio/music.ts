@@ -6,7 +6,10 @@
 // octave-pumping and then 16th bass, 16th arp + a second arp octave, hats → 16th hats,
 // snare, end-of-phrase snare rolls and risers, crashes, a lead hook at the top, deeper
 // sidechain pump, and tempo. The "menu" variant is a calm half-time pad/arp/bass bed.
+// For the one long v2 match: near-zero intensity is a calm "exploration" groove (half-time,
+// softer kick, shallow pump), and `setDuel(true)` (last 2 fighters) swells in the duel layer.
 
+import { DuelLayer } from "./duel";
 import { envelope, midi } from "./synth";
 
 export type MusicVariant = "menu" | "game";
@@ -49,6 +52,10 @@ export class Music {
   /** Target intensity; `si` is the smoothed value the sequencer actually uses. */
   intensity = 0;
   private si = 0;
+  /** Final-duel layer target (0/1) and its smoothed amount. */
+  private duelTarget = 0;
+  private sDuel = 0;
+  private duel: DuelLayer;
   private lastTick = 0;
   /** Latched at each bar line so a mid-bar change never overlaps mono-bass envelopes. */
   private barMenu = false;
@@ -155,6 +162,8 @@ export class Music {
     this.stingFilter = this.filter("lowpass", 4000, 1);
     this.stingBus = this.gain(0.55);
     this.stingFilter.connect(this.stingBus).connect(out);
+
+    this.duel = new DuelLayer(c, this.duck, this.drums, noise);
   }
 
   /** Fades the track in to `level`. Menus get a calm half-time bed. Safe to call every frame. */
@@ -191,6 +200,11 @@ export class Music {
 
   setIntensity(v: number) {
     this.intensity = clamp01(v);
+  }
+
+  /** Final-duel layer on/off (fades over ~1.5 s). */
+  setDuel(on: boolean) {
+    this.duelTarget = on ? 1 : 0;
   }
 
   /** A short musical cue over the track (which dips underneath it). */
@@ -241,6 +255,7 @@ export class Music {
     const dt = Math.max(0, now - this.lastTick);
     this.lastTick = now;
     this.si += (this.intensity - this.si) * Math.min(1, dt / 2);
+    this.sDuel += (this.duelTarget - this.sDuel) * Math.min(1, dt / 1.5);
     // Throttled tab: skip the missed notes instead of firing them all at once.
     if (this.nextTime < now - 0.1) this.nextTime = now + 0.05;
     const delay = this.stepDur() * 3;
@@ -266,9 +281,10 @@ export class Music {
   }
 
   /** Dev/offline: render deterministically on an OfflineAudioContext (no timers). */
-  renderOffline(seconds: number, level: number, variant: MusicVariant, intensity: number) {
+  renderOffline(seconds: number, level: number, variant: MusicVariant, intensity: number, duel = false) {
     this.variant = variant;
     this.intensity = this.si = clamp01(intensity);
+    this.duelTarget = this.sDuel = duel ? 1 : 0;
     this.bus.gain.value = level;
     this.nextTime = 0.05;
     this.step = 0;
@@ -290,10 +306,12 @@ export class Music {
 
     if (s16 === 0) this.barStart(bar, chord, t, sd, I, menu);
 
-    // Kick + sidechain pump (menus get only a gentle breathing pump, no kick).
+    // Kick + sidechain pump (menus get only a gentle breathing pump, no kick). Exploration
+    // (very low intensity) is half-time with a softer kick and a shallower pump.
+    const explore = menu ? 0 : 1 - smooth(0.06, 0.2, I);
     if (s16 % 4 === 0) {
-      if (!menu) this.kick(t, 0.85);
-      const depth = menu ? 0.12 : 0.3 + 0.35 * I;
+      if (!menu && (explore < 0.5 || s16 % 8 === 0)) this.kick(t, 0.85 * (1 - 0.3 * explore));
+      const depth = menu ? 0.12 : (0.3 + 0.35 * I) * (1 - 0.45 * explore);
       const g = this.duck.gain;
       g.setValueAtTime(1, t);
       g.linearRampToValueAtTime(1 - depth, t + 0.015);
@@ -322,6 +340,8 @@ export class Music {
     }
 
     if (menu) return;
+
+    if (this.sDuel > 0.02) this.duel.step(s16, bar, t, sd, this.sDuel, chord);
 
     // Hats: offbeat 8ths, then 16ths with accents.
     const hat8 = smooth(0.12, 0.35, I);
