@@ -1,9 +1,13 @@
 /* Lobby: giant room code, share link, player cores, color picker, grouped host controls. */
 
-.lobby { width: min(72rem, 96vw); display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1.2rem; align-items: start; }
+.lobby { width: min(96rem, 96vw); display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.85fr); grid-template-areas: "main hero side"; gap: 1.2rem; align-items: start; }
 .lobby.settled .code-tile, .lobby.settled .slot { animation: none; }
-.lobby-main, .lobby-side { display: flex; flex-direction: column; gap: 1.2rem; min-width: 0; }
-@media (max-width: 900px) { .lobby { grid-template-columns: 1fr; } }
+.lobby-main, .lobby-side, .lobby-hero { display: flex; flex-direction: column; gap: 1.2rem; min-width: 0; }
+.lobby-main { grid-area: main; }
+.lobby-hero { grid-area: hero; }
+.lobby-side { grid-area: side; }
+@media (max-width: 1240px) { .lobby { width: min(72rem, 96vw); grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-areas: "main hero" "main side"; } }
+@media (max-width: 900px) { .lobby { grid-template-columns: 1fr; grid-template-areas: "main" "hero" "side"; } }
 
 .code-panel { text-align: center; padding-bottom: 1.2rem; }
 .code-tiles { display: flex; gap: 0.7rem; justify-content: center; margin: 0.2rem 0 1rem; }
@@ -59,3 +63,26 @@
 .btn.start { min-height: 4.6rem; font-size: 1.25rem; }
 .btn.start.go { animation: start-pulse 1.6s ease-in-out infinite; }
 @keyframes start-pulse { 0%, 100% { box-shadow: 0 0.28rem 0 #8a4a00, 0 0.8rem 2rem rgba(255, 170, 40, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6); } 50% { box-shadow: 0 0.28rem 0 #8a4a00, 0 0 3.4rem rgba(255, 200, 61, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.6); } }
+
+/* Heroes in the lobby: roster portraits and the compact picker in the side panel. */
+.slot-hero { flex: none; width: 3.6rem; height: 3.6rem; border-radius: 0.9rem; display: grid; place-items: center; background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--c) 22%, transparent), rgba(5, 4, 13, 0.55) 72%); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); overflow: hidden; }
+.slot-hero .hero-mini { display: block; transform: translateY(0.15rem) scale(1.12); }
+.slot .who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.05rem; }
+.slot .who .name { flex: none; }
+.slot .hero-of { font-family: var(--ui); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.me-panel .panel-title { align-items: center; }
+.me-panel .panel-title::after { order: 1; }
+.hero-pick-name { order: 2; display: flex; flex-direction: column; align-items: flex-end; font-family: var(--display); font-weight: 900; font-size: 0.95rem; letter-spacing: 0.12em; color: #fff; text-transform: uppercase; text-shadow: 0 0 1rem var(--c, var(--cyan)); }
+.hero-pick-name small { font-family: var(--ui); font-weight: 600; font-size: 0.78rem; letter-spacing: 0.02em; text-transform: none; color: var(--dim); text-shadow: none; }
+.lobby .hero-picker.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin: 0.5rem 0 0.2rem; }
+.lobby .hero-picker.compact .hero-card { padding: 0.3rem 0.25rem 0.45rem; border-radius: 0.9rem; gap: 0; }
+.lobby .hero-picker.compact .hero-portrait { width: 100%; height: auto; }
+.lobby .hero-picker.compact .hero-name { font-size: 0.7rem; letter-spacing: 0.1em; }
+.lobby .hero-picker.compact .hero-tag { display: none; }
+.lobby .hero-picker.compact .hero-card.on::after { top: 0.3rem; right: 0.3rem; width: 1.05rem; height: 1.05rem; font-size: 0.62rem; }
+.lobby.settled .hero-card { animation: none; }
+.lobby.settled .hero-card.on .hero-portrait { animation: hero-float 2.6s ease-in-out infinite; }
+.lobby.settled .hero-card.on.picked .hero-portrait { animation: hero-hop 0.45s var(--back), hero-float 2.6s 0.45s ease-in-out infinite; }
+.me-panel .color-sec { margin-top: 0.8rem; }
+.me-panel .color-sec > .label { display: block; margin-bottom: 0.1rem; }
+.me-panel .color-sec .swatches { margin: 0.4rem 0 1rem; }

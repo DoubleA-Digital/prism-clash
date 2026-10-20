@@ -6,8 +6,8 @@
 
 import type { WebSocket } from "ws";
 import {
-  applyPick, BOTS, C2S, draftOffer, encode, GHOST, HUMAN_COLORS, inputFromWire, isMapId, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
-  type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type InputFrame, type MapId, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
+  applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
+  type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { createBrain, type BotBrain } from "../bots/brain";
 import { log } from "../log";
@@ -15,7 +15,7 @@ import { isInt, isNum, sanitizeName } from "../validate";
 import { applyShard, botShardPick, matchResults, openShard, shardReplaces } from "./match";
 import { newMember, resetMatchProgress, type Member } from "./member";
 import { buildSnapshot } from "./snapshots";
-import { debugLoadout } from "./debug";
+import { debugBuildingSpot, debugFightSpot, debugLoadout } from "./debug";
 
 const TICK_MS = 1000 / NET.tickRate;
 const secs = (s: number) => Math.round(s * NET.tickRate);
@@ -144,9 +144,19 @@ export class Room {
     while (this.members.has(id)) id++;
     const m = newMember(id, name, "", true, "bot", Date.now());
     m.color = this.freeColor(false);
+    m.hero = this.botHero();
     this.members.set(id, m);
     this.bots.set(id, createBrain(this.settings.botDifficulty, this.rng.int(1e9)));
     return m;
+  }
+
+  /** A random hero no other bot wears yet (the least used one once all 8 are taken). */
+  private botHero(): HeroId {
+    const uses = new Map<HeroId, number>(HERO_IDS.map((h) => [h, 0]));
+    for (const o of this.members.values()) uses.set(o.hero, (uses.get(o.hero) ?? 0) + (o.bot ? 2 : 1));
+    const least = Math.min(...uses.values());
+    const pool = HERO_IDS.filter((h) => uses.get(h) === least);
+    return pool[this.rng.int(pool.length)] ?? DEFAULT_HERO;
   }
 
   private fillBots() {
@@ -172,7 +182,7 @@ export class Room {
       hostId: this.hostId,
       phase: this.phase,
       settings: { ...this.settings },
-      players: [...this.members.values()].map((m) => ({ id: m.id, name: m.name, color: m.color, ready: m.ready, bot: m.bot, connected: m.connected, host: m.id === this.hostId })),
+      players: [...this.members.values()].map((m) => ({ id: m.id, name: m.name, color: m.color, hero: m.hero, ready: m.ready, bot: m.bot, connected: m.connected, host: m.id === this.hostId })),
     };
   }
 
@@ -245,6 +255,7 @@ export class Room {
       const taken = [...this.members.values()].some((o) => o.id !== m.id && o.color === msg.color);
       if (!taken) m.color = msg.color;
     }
+    if (isHeroId(msg.hero)) m.hero = msg.hero;
     if (typeof msg.ready === "boolean") m.ready = msg.ready;
     if (typeof msg.name === "string") {
       const n = sanitizeName(msg.name);
@@ -451,6 +462,20 @@ export class Room {
       p.hp = 100;
     } else if (g === "loadout") {
       debugLoadout(p);
+    } else if (g === "shard") {
+      const target = this.members.get(p.id);
+      if (target) {
+        target.shardPending++;
+        if (openShard(target, this.rng, this.tick) && !target.bot) this.sendShard(target);
+      }
+    } else if (g === "toBuilding" || g === "toFight") {
+      const spot = g === "toBuilding" ? debugBuildingSpot(w, p) : debugFightSpot(w, p);
+      if (spot) {
+        p.x = spot.x;
+        p.y = spot.y;
+        p.vx = p.vy = p.px = p.py = 0;
+        p.warp = 3;
+      }
     } else if ((POWER_IDS as readonly string[]).includes(g)) {
       const slot = p.slots[0] ? 1 : 0;
       p.slots[slot] = { id: g as PowerId, cd: 0, recast: 0 };

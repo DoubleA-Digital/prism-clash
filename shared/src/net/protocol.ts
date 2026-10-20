@@ -1,6 +1,7 @@
 // Every network message, both directions. Frames are msgpack: [type, ...payload].
 // Hot messages (input, snapshot) are flat arrays of small integers to stay compact.
 
+import type { HeroId } from "../heroes";
 import type { MapId } from "../sim/map/types";
 import type { GameEvent, PowerId, UltId } from "../sim/types";
 
@@ -47,6 +48,8 @@ export interface LobbyPlayer {
   id: number;
   name: string;
   color: number;
+  /** Chibi hero look (same stats for everyone). */
+  hero: HeroId;
   ready: boolean;
   bot: boolean;
   connected: boolean;
@@ -71,13 +74,15 @@ export interface RoomState {
 
 // ---- client -> server ----------------------------------------------------------------
 
-export type DebugGrant = PowerId | UltId | "fullUlt" | "heal" | "loadout";
+/** Test-room grants: a power or ultimate, or a helper (shard draft, jump into a building or
+ *  next to the nearest enemy) for trying systems quickly. */
+export type DebugGrant = PowerId | UltId | "fullUlt" | "heal" | "loadout" | "shard" | "toBuilding" | "toFight";
 
 export type ClientMsg =
   | { type: typeof C2S.hello; name: string; token: string | null; version: number }
   | { type: typeof C2S.createRoom; testRoom: boolean }
   | { type: typeof C2S.joinRoom; code: string }
-  | { type: typeof C2S.lobbySet; color?: number; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; map?: MapId | "auto"; name?: string }
+  | { type: typeof C2S.lobbySet; color?: number; hero?: HeroId; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; map?: MapId | "auto"; name?: string }
   | { type: typeof C2S.kick; playerId: number }
   | { type: typeof C2S.start }
   | { type: typeof C2S.pickUlt; index: number }

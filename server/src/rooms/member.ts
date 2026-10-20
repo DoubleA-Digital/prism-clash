@@ -1,12 +1,13 @@
 // One seat in a room: a human (with a socket that may drop and rejoin) or a bot.
 
 import type { WebSocket } from "ws";
-import type { DraftLoadout, EntityMap, InputFrame, PowerId, UltId } from "@prism/shared";
+import { DEFAULT_HERO, type DraftLoadout, type EntityMap, type HeroId, type InputFrame, type PowerId, type UltId } from "@prism/shared";
 
 export interface Member {
   id: number;
   name: string;
   color: number;
+  hero: HeroId;
   ready: boolean;
   bot: boolean;
   token: string;
@@ -46,7 +47,7 @@ export interface Member {
 
 export function newMember(id: number, name: string, token: string, bot: boolean, ip: string, now: number): Member {
   return {
-    id, name, color: 0, ready: bot, bot, token, ws: null, connected: true, disconnectedAt: 0, joinedAt: now, ip,
+    id, name, color: 0, hero: DEFAULT_HERO, ready: bot, bot, token, ws: null, connected: true, disconnectedAt: 0, joinedAt: now, ip,
     loadout: { slots: [null, null], older: 0 }, ult: null, ultOptions: [], draftOptions: [], draftPick: null, ultPick: null,
     shardOptions: [], shardEndsAt: 0, shardPending: 0,
     inputs: [], dtBudget: 0, budgetAt: 0, ackTick: -1, baselines: new Map(), rttMs: 80, spectate: 0, hauntReadyAt: 0,

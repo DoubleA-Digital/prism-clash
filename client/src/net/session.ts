@@ -3,8 +3,8 @@
 // UI screens subscribe to it.
 
 import {
-  C2S, inputToWire, NET, S2C,
-  type DebugGrant, type Difficulty, type GameEvent, type InputFrame, type MapId, type Phase,
+  C2S, DEFAULT_HERO, inputToWire, isHeroId, NET, S2C,
+  type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type Phase,
   type PlayerMatchStats, type PowerId, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { NetView } from "./netview";
@@ -25,12 +25,15 @@ export interface ShardOffer {
 
 const TOKEN_KEY = "prism.session";
 const NAME_KEY = "prism.name";
+const HERO_KEY = "prism.hero";
 
 export class Session {
   conn = new Connection();
   myId = 0;
   token: string | null = null;
   name = "";
+  /** The hero you last picked (remembered across visits). */
+  hero: HeroId = DEFAULT_HERO;
   room: RoomState | null = null;
   phase: Phase | "menu" = "menu";
   phaseEndsAt = 0;
@@ -60,6 +63,8 @@ export class Session {
     try {
       this.token = sessionStorage.getItem(TOKEN_KEY);
       this.name = localStorage.getItem(NAME_KEY) ?? "";
+      const hero = localStorage.getItem(HERO_KEY);
+      if (isHeroId(hero)) this.hero = hero;
     } catch {
       /* storage blocked */
     }
@@ -107,6 +112,17 @@ export class Session {
     }
   }
 
+  /** Picks your hero: remembered locally and sent to the room (lobby only). */
+  setHero(id: HeroId) {
+    this.hero = id;
+    try {
+      localStorage.setItem(HERO_KEY, id);
+    } catch {
+      /* storage blocked */
+    }
+    if (this.room && this.room.phase === "lobby") this.lobbySet({ hero: id });
+  }
+
   createRoom(testRoom = false) {
     this.lastError = null;
     this.pendingJoin = { create: true, testRoom, code: "" };
@@ -140,7 +156,7 @@ export class Session {
     this.changed();
   }
 
-  lobbySet(s: { color?: number; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; map?: MapId | "auto"; name?: string }) {
+  lobbySet(s: { color?: number; hero?: HeroId; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; map?: MapId | "auto"; name?: string }) {
     this.conn.send({ type: C2S.lobbySet, ...s });
   }
 
@@ -218,6 +234,10 @@ export class Session {
     return this.room?.players.find((p) => p.id === id)?.color ?? 0;
   }
 
+  playerHero(id: number): HeroId {
+    return this.room?.players.find((p) => p.id === id)?.hero ?? DEFAULT_HERO;
+  }
+
   private onMessage(m: ServerMsg) {
     switch (m.type) {
       case S2C.welcome:
@@ -235,10 +255,15 @@ export class Session {
       case S2C.pong:
         this.rtt = this.rtt ? this.rtt * 0.75 + (performance.now() - m.t) * 0.25 : performance.now() - m.t;
         break;
-      case S2C.roomState:
+      case S2C.roomState: {
+        const joined = this.room?.code !== m.room.code;
         this.room = m.room;
+        // A fresh room starts everyone on the default hero: bring your remembered pick along.
+        const me = m.room.players.find((p) => p.id === this.myId);
+        if (joined && me && me.hero !== this.hero && m.room.phase === "lobby") this.lobbySet({ hero: this.hero });
         if (this.phase === "menu") this.phase = m.room.phase;
         break;
+      }
       case S2C.error:
         this.lastError = m.message;
         break;

@@ -11,9 +11,9 @@ import { Screens } from "./ui/screens";
 const canvas = document.getElementById("game");
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("#game canvas missing");
 
-installDevHooks();
 applySettings();
 const game = new Game(canvas);
+installDevHooks((x, y) => game.cam.toScreen(x, y));
 new Screens(game);
 
 // Browsers only allow audio after a user gesture.

@@ -74,7 +74,8 @@ export function debugPanel(getFps: () => { fps: number; frameMs: number; particl
         h("div.grid", null, allPowers().map((p) => h("button", { onclick: grant(p.id), title: p.name }, h("img", { src: iconDataUrl(p.id, 40), alt: p.name })))),
         h("div.label", { style: { margin: "8px 0" } }, "Ultimates (granted full)"),
         h("div.grid", null, allUlts().map((u) => h("button", { onclick: grant(u.id), title: u.name }, h("img", { src: iconDataUrl(u.id, 40), alt: u.name })))),
-        h("div.row", { style: { marginTop: "8px" } }, h("button.btn.small", { onclick: grant("fullUlt") }, "Full ult"), h("button.btn.small", { onclick: grant("heal") }, "Heal"), h("button.btn.small", { onclick: grant("loadout") }, "Loadout")))
+        h("div.row", { style: { marginTop: "8px" } }, h("button.btn.small", { onclick: grant("fullUlt") }, "Full ult"), h("button.btn.small", { onclick: grant("heal") }, "Heal"), h("button.btn.small", { onclick: grant("loadout") }, "Loadout")),
+        h("div.row", { style: { marginTop: "8px" } }, h("button.btn.small", { onclick: grant("shard") }, "Prism Shard"), h("button.btn.small", { onclick: grant("toBuilding") }, "Into building"), h("button.btn.small", { onclick: grant("toFight") }, "To a fight")))
       : h("div.hint", null, "Granting powers works in test rooms: open the game with ?test=1 and create a room."),
   );
   const update = () => {

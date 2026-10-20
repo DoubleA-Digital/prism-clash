@@ -1,12 +1,15 @@
-// Lobby: room code + invite link, each player as a live glowing core, color picker, ready
-// toggle, and grouped host controls (fill with bots, difficulty, map, kick, start).
+// Lobby: room code + invite link, each player as their chibi hero portrait, the hero picker,
+// color picker, ready toggle, and grouped host controls (fill with bots, difficulty, map,
+// kick, start).
 
-import { HUMAN_COLORS, mapName, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, type Difficulty, type MapId, type RoomState } from "@prism/shared";
+import { HEROES, HUMAN_COLORS, mapName, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, type Difficulty, type MapId, type RoomState } from "@prism/shared";
 import { audio } from "../audio/audio";
 import { session } from "../net/session";
 import { coreCanvas } from "./coreView";
 import { h } from "./dom";
 import { rem } from "./fx";
+import { mountHeroPicker } from "./heroPicker";
+import { portraitCanvas } from "./heroPortrait";
 import type { Built } from "./types";
 
 const hex = (c: number) => PLAYER_COLORS[c]?.hex ?? "#ffffff";
@@ -16,6 +19,10 @@ export function lobbyScreen(toast: (t: string) => void): Built {
   let prevReady = new Set<number>();
   const lobby = h("div.lobby");
   const screen = h("div.screen.lobby-screen", null, lobby);
+  // One picker for the lobby's lifetime: re-renders move the same node, so its portraits and
+  // focus survive every room update.
+  const picker = mountHeroPicker(document.createElement("div"), { selected: session.hero, onSelect: (id) => session.setHero(id) });
+  picker.el.classList.add("compact");
 
   const render = (room: RoomState) => {
     const me = room.players.find((p) => p.id === session.myId);
@@ -36,8 +43,8 @@ export function lobbyScreen(toast: (t: string) => void): Built {
       return h(
         `div.slot${p.id === session.myId ? ".me" : ""}${ready ? ".ready" : ""}`,
         { style: { "--c": hex(p.color), "--i": String(i) } },
-        coreCanvas(p.color, rem(2.7), { ultReady: ready && !p.bot && !p.host }),
-        h("div.name", null, p.name),
+        h("div.slot-hero", null, portraitCanvas(p.hero, hex(p.color), Math.round(rem(3.6)))),
+        h("div.who", null, h("div.name", null, p.name), h("div.hero-of", null, HEROES[p.hero].name)),
         h(
           "div.tags",
           null,
@@ -113,14 +120,15 @@ export function lobbyScreen(toast: (t: string) => void): Built {
       h("div.panel.roster", null, h("div.panel-title", null, "Players", h("span.count", null, `${humans.length}/${NET.maxPlayers}`)), h("div.slots", null, slots)),
     );
 
-    const right = h(
-      "div.lobby-side",
+    const hero = h(
+      "div.lobby-hero",
       null,
       h(
         "div.panel.me-panel",
         null,
-        h("div.panel-title", null, "Your core"),
-        swatches,
+        h("div.panel-title", null, "Your hero", me ? h("span.hero-pick-name", null, HEROES[me.hero].name, h("small", null, HEROES[me.hero].tagline)) : null),
+        picker.el,
+        h("div.sec.color-sec", null, h("span.label", null, "Neon color"), swatches),
         host
           ? null
           : h(
@@ -130,6 +138,11 @@ export function lobbyScreen(toast: (t: string) => void): Built {
           ),
         host ? h("div.hint", { style: { textAlign: "left" } }, "You are the host: players ready up, you start the match.") : null,
       ),
+    );
+
+    const right = h(
+      "div.lobby-side",
+      null,
       h(
         `div.panel.settings-panel${host ? "" : ".locked"}`,
         null,
@@ -148,8 +161,12 @@ export function lobbyScreen(toast: (t: string) => void): Built {
         h("button.btn.small.ghost", { onclick: () => session.leave(), "data-nav": "1" }, "Leave room"),
       ),
     );
+    if (me) {
+      picker.setColor(hex(me.color));
+      picker.setSelected(me.hero);
+    }
     lobby.classList.toggle("settled", settled);
-    lobby.replaceChildren(left, right);
+    lobby.replaceChildren(left, hero, right);
     settled = true;
   };
 
