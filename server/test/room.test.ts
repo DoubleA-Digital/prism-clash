@@ -253,6 +253,27 @@ describe("leaving a match after being eliminated", () => {
     expect(lastPhase(again.sent)).toMatchObject({ phase: "lobby" });
   });
 
+  test("exiting to the main menu while alive forfeits: eliminated, credited, loot dropped, seat freed", () => {
+    const { r, a, b, w } = twoInARound();
+    const pb = w.players.get(2)!;
+    for (let i = 0; i < 10; i++) r.step();
+    // Ann landed the last hit a moment ago, inside the kill-credit window.
+    w.damage(pb, 10, 1, "pistol");
+    const loot = w.loot.size;
+    r.removeMember(b.id); // what the server does on C2S.leave
+    expect(pb.alive).toBe(false);
+    expect(w.deaths.find((d) => d.id === 2)?.killer).toBe(1);
+    expect(w.stat(1).kills).toBe(1);
+    expect(w.loot.size).toBeGreaterThan(loot);
+    expect(r.members.has(2)).toBe(false);
+    // The rejoin token no longer holds a seat; the match goes on and Bea still gets a placement.
+    expect([...r.members.values()].some((m) => m.token === "t2")).toBe(false);
+    for (const p of w.players.values()) if (p.id !== 1 && p.alive) w.kill(p);
+    for (let i = 0; i < (MATCH.victorySeconds + 2) * NET.tickRate && r.phase === "round"; i++) r.step();
+    expect(r.phase).toBe("matchEnd");
+    expect(a.inLobby).toBe(false);
+  });
+
   test("a rejoin while waiting in the lobby lands back in the lobby, not the match", () => {
     const { r, b, w } = twoInARound();
     w.kill(w.players.get(2)!);

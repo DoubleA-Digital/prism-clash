@@ -126,3 +126,12 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .esc-body .esc-leave { color: #ffd1e6; border-color: rgba(255, 46, 136, 0.45); }
 .esc-body .esc-leave:hover, .esc-body .esc-leave:focus { box-shadow: 0 0 1.4rem rgba(255, 46, 136, 0.45); }
 .esc-body .hint { text-align: center; font-size: 0.9rem; }
+/* HUD menu button (top left, next to the ping chip): always there during a match. */
+.hud-menu-btn { position: absolute; z-index: 9; display: flex; align-items: center; justify-content: center; gap: calc(var(--u, 1px) * 7); border-radius: calc(var(--u, 1px) * 13); background: rgba(8, 7, 26, 0.78); border: 1px solid rgba(255, 255, 255, 0.16); color: rgba(220, 226, 255, 0.92); font-family: var(--display); font-weight: 800; font-size: calc(var(--u, 1px) * 11); letter-spacing: 0.16em; pointer-events: auto; transition: border-color 0.15s, box-shadow 0.15s, color 0.15s; }
+.hud-menu-btn:hover, .hud-menu-btn:focus-visible { border-color: var(--cyan); color: #fff; box-shadow: 0 0 1rem rgba(0, 240, 255, 0.35); }
+.hud-menu-btn .bars { width: calc(var(--u, 1px) * 12); height: calc(var(--u, 1px) * 9); background: linear-gradient(currentColor 0 0) top / 100% 18% no-repeat, linear-gradient(currentColor 0 0) center / 100% 18% no-repeat, linear-gradient(currentColor 0 0) bottom / 100% 18% no-repeat; }
+.esc-note { text-align: center; color: var(--dim); font-size: 0.9rem; font-weight: 600; }
+.esc-confirm { display: flex; flex-direction: column; gap: 0.35rem; text-align: center; padding: 0.2rem 0 0.4rem; }
+.esc-confirm b { font-family: var(--display); font-weight: 900; font-size: 1.15rem; letter-spacing: 0.08em; color: #fff; }
+.esc-confirm span { color: var(--dim); font-weight: 600; }
+.btn.danger-fill { background: linear-gradient(180deg, #ff4a7a, #c41c55); border-color: rgba(255, 210, 225, 0.6); color: #fff; }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Practice: drop in, get eliminated (test-room grant), check the death screen offers
-// "Back to menu" (and the Esc menu does too), press it, land on the main menu, then start a
+// "Back to menu" (and the Esc menu offers "Exit to main menu"), press it, land on the main menu, then start a
 // second practice match to show nothing was left behind.
 //   node e2e/v2b-leave-practice.mjs [url] [--headed]
 // Output: e2e/out/v2b-practice-*.png. Fails (exit 1) on any console/page error or a wrong turn.
@@ -54,7 +54,7 @@ await page.waitForSelector(".esc-menu", { timeout: 3000 });
 await page.waitForTimeout(400);
 const escLabel = await page.textContent(".esc-menu .esc-leave");
 console.log("esc menu leave:", escLabel);
-if (escLabel?.trim() !== "Back to menu") fail(`Esc menu: expected "Back to menu", got "${escLabel}"`);
+if (escLabel?.trim() !== "Exit to main menu") fail(`Esc menu: expected "Exit to main menu", got "${escLabel}"`);
 await shot("2-esc-menu");
 await page.click(".esc-menu >> text=Resume");
 await page.waitForTimeout(300);
