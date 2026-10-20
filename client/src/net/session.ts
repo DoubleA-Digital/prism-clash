@@ -1,28 +1,26 @@
 // The client's session with the server: connection, room/lobby state, match phases,
-// offers, standings, and the NetView for the current round. UI screens subscribe to it.
+// offers (including in-match shard drafts), results, and the NetView for the match.
+// UI screens subscribe to it.
 
 import {
   C2S, inputToWire, NET, S2C,
-  type Difficulty, type GameEvent, type InputFrame, type LayoutId, type Loadout, type Phase, type Placement,
+  type DebugGrant, type Difficulty, type GameEvent, type InputFrame, type MapId, type Phase,
   type PlayerMatchStats, type PowerId, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { NetView } from "./netview";
 import { Connection, serverUrl } from "./socket";
 
-export interface RoundEndInfo {
-  placements: Placement[];
-  totals: Record<number, number>;
-  killTick: number;
-  killerId: number;
-  victimId: number;
-  winnerId: number;
-  round: number;
-}
-
 export interface MatchEndInfo {
   winnerId: number;
   stats: PlayerMatchStats[];
-  chaosMoment: { playerId: number; damage: number; round: number } | null;
+  chaosMoment: { playerId: number; damage: number } | null;
+}
+
+export interface ShardOffer {
+  options: PowerId[];
+  endsAt: number;
+  total: number;
+  replaces: PowerId | null;
 }
 
 const TOKEN_KEY = "prism.session";
@@ -36,19 +34,15 @@ export class Session {
   room: RoomState | null = null;
   phase: Phase | "menu" = "menu";
   phaseEndsAt = 0;
-  round = 0;
-  layout: LayoutId = "shatteredGrid";
+  mapId: MapId = "neonCity";
   seed = 0;
   playerCount = 0;
   view: NetView | null = null;
   ultOptions: UltId[] = [];
   draftOptions: PowerId[] = [];
-  draftPickNumber = 1;
-  draftPicks = 1;
   draftLocked = new Set<number>();
   myPick: number | null = null;
-  loadouts: Loadout[] = [];
-  roundEnd: RoundEndInfo | null = null;
+  shard: ShardOffer | null = null;
   matchEnd: MatchEndInfo | null = null;
   rtt = 0;
   lastError: string | null = null;
@@ -146,7 +140,7 @@ export class Session {
     this.changed();
   }
 
-  lobbySet(s: { color?: number; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; layout?: LayoutId | "auto"; name?: string }) {
+  lobbySet(s: { color?: number; ready?: boolean; fillBots?: boolean; botDifficulty?: Difficulty; map?: MapId | "auto"; name?: string }) {
     this.conn.send({ type: C2S.lobbySet, ...s });
   }
 
@@ -170,6 +164,14 @@ export class Session {
     this.changed();
   }
 
+  /** In-match Prism Shard pick (the overlay closes right away; the server confirms). */
+  pickShard(i: number) {
+    if (!this.shard) return;
+    this.conn.send({ type: C2S.pickPower, index: i });
+    this.shard = null;
+    this.changed();
+  }
+
   rematch() {
     this.conn.send({ type: C2S.rematch });
   }
@@ -182,7 +184,7 @@ export class Session {
     this.conn.send({ type: C2S.spectate, targetId: id });
   }
 
-  debugGrant(playerId: number, power: PowerId | UltId | "fullUlt" | "heal") {
+  debugGrant(playerId: number, power: DebugGrant) {
     this.conn.send({ type: C2S.debugGrant, playerId, power });
   }
 
@@ -255,24 +257,18 @@ export class Session {
         break;
       case S2C.draftOffer:
         this.draftOptions = m.options;
-        this.draftPickNumber = m.pickNumber;
-        this.draftPicks = m.picks;
         this.draftLocked.clear();
         this.myPick = null;
         break;
       case S2C.draftLocked:
         this.draftLocked = new Set(m.playerIds);
         break;
-      case S2C.draftReveal:
-        this.loadouts = m.loadouts;
+      case S2C.shardOffer:
+        this.shard = m.options.length ? { options: m.options, endsAt: performance.now() + m.endsIn * 1000, total: Math.max(1, m.endsIn), replaces: m.replaces } : null;
         break;
       case S2C.snapshot:
         if (this.view) this.view.receive(m.snap, performance.now());
         return; // hot path: no UI notify
-      case S2C.roundEnd:
-        this.roundEnd = { ...m };
-        if (this.room) for (const p of this.room.players) p.points = m.totals[p.id] ?? p.points;
-        break;
       case S2C.matchEnd:
         this.matchEnd = { winnerId: m.winnerId, stats: m.stats, chaosMoment: m.chaosMoment };
         break;
@@ -286,25 +282,21 @@ export class Session {
     const prev = this.phase;
     this.phase = m.phase;
     this.phaseEndsAt = performance.now() + m.endsIn * 1000;
-    this.round = m.round;
-    if (m.phase === "countdown" || ((m.phase === "round" || m.phase === "replay") && !this.view)) {
-      // New round: a fresh view of the arena (same seed + layout as the server).
-      if (m.phase === "countdown" || this.seed !== m.seed) {
-        this.layout = m.layout;
-        this.seed = m.seed;
-        this.playerCount = m.playerCount;
-        this.view = new NetView(m.layout, m.playerCount, m.seed, this.myId);
-        this.view.onEvent = (e, imm) => this.eventListeners.forEach((f) => f(e, imm));
-        this.sentFrames = [];
-        this.unsent = [];
-        this.roundEnd = null;
-      }
+    if (m.phase === "countdown" || (m.phase === "round" && (!this.view || this.seed !== m.seed))) {
+      // New match: a fresh view of the map (same map + seed as the server).
+      this.mapId = m.map;
+      this.seed = m.seed;
+      this.playerCount = m.playerCount;
+      this.view = new NetView(m.map, m.seed, this.myId);
+      this.view.onEvent = (e, imm) => this.eventListeners.forEach((f) => f(e, imm));
+      this.sentFrames = [];
+      this.unsent = [];
+      this.shard = null;
     }
+    if (m.phase === "lobby" || m.phase === "matchEnd") this.shard = null;
     if (m.phase === "lobby") {
       this.view = null;
       this.matchEnd = null;
-      this.roundEnd = null;
-      this.loadouts = [];
     }
     if (m.phase === "ultSelect") this.matchEnd = null;
     if (prev !== m.phase) this.myPick = null;

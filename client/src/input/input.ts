@@ -3,19 +3,32 @@
 
 import { BTN } from "@prism/shared";
 
-export type Action = "up" | "down" | "left" | "right" | "shoot" | "dash" | "p1" | "p2" | "p3" | "ult" | "scoreboard";
+export type Action =
+  | "up" | "down" | "left" | "right" | "shoot" | "scope" | "dash" | "reload" | "interact" | "slot1" | "slot2" | "swap"
+  | "throw" | "heal" | "p1" | "p2" | "ult" | "scoreboard";
 
 export const DEFAULT_BINDS: Record<Action, string> = {
-  up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD", shoot: "Mouse0", dash: "Space",
-  p1: "KeyQ", p2: "KeyE", p3: "KeyF", ult: "KeyR", scoreboard: "Tab",
+  up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD", shoot: "Mouse0", scope: "Mouse2", dash: "Space",
+  reload: "KeyR", interact: "KeyF", slot1: "Digit1", slot2: "Digit2", swap: "Wheel", throw: "KeyG", heal: "KeyH",
+  p1: "KeyQ", p2: "KeyE", ult: "KeyX", scoreboard: "Tab",
 };
 
 export const ACTION_LABELS: Record<Action, string> = {
-  up: "Move up", down: "Move down", left: "Move left", right: "Move right", shoot: "Shoot", dash: "Dash",
-  p1: "Power 1", p2: "Power 2", p3: "Prism power", ult: "Ultimate", scoreboard: "Scoreboard",
+  up: "Move up", down: "Move down", left: "Move left", right: "Move right", shoot: "Shoot", scope: "Scope (sniper)", dash: "Dash",
+  reload: "Reload", interact: "Pick up / swap", slot1: "Weapon 1", slot2: "Weapon 2", swap: "Switch weapon", throw: "Throw grenade",
+  heal: "Heal (hold)", p1: "Power 1", p2: "Power 2", ult: "Ultimate", scoreboard: "Scoreboard",
 };
 
-const STORE = "prism.binds.v1";
+/** Gamepad buttons (standard mapping) for each game action. */
+export const PAD: Partial<Record<Action, number>> = {
+  shoot: 7, scope: 6, dash: 0, reload: 1, interact: 2, ult: 3, p1: 4, p2: 5, heal: 12, throw: 13, swap: 15,
+};
+export const PAD_LABELS: [string, string][] = [
+  ["L stick", "Move"], ["R stick", "Aim"], ["RT", "Shoot"], ["LT", "Scope"], ["A", "Dash"], ["B", "Reload"], ["X", "Pick up"],
+  ["Y", "Ultimate"], ["LB / RB", "Powers"], ["D-pad up", "Heal"], ["D-pad down", "Throw"], ["D-pad right", "Switch weapon"],
+];
+
+const STORE = "prism.binds.v2";
 
 export function loadBinds(): Record<Action, string> {
   try {
@@ -39,12 +52,28 @@ export function keyLabel(code: string): string {
   if (code === "Mouse0") return "Left click";
   if (code === "Mouse2") return "Right click";
   if (code === "Mouse1") return "Middle click";
+  if (code === "Wheel") return "Wheel";
   if (code.startsWith("Key")) return code.slice(3);
   if (code.startsWith("Digit")) return code.slice(5);
   return code.replace("Left", "L ").replace("Right", "R ");
 }
 
+/** Short label for keycaps in the HUD. */
+export function capLabel(code: string): string {
+  if (code === "Mouse0") return "LMB";
+  if (code === "Mouse2") return "RMB";
+  if (code === "Mouse1") return "MMB";
+  if (code === "Space") return "SPACE";
+  return keyLabel(code).toUpperCase();
+}
+
 const DEADZONE = 0.22;
+
+/** Game actions that map to a network button bit. */
+const BITS: [Action, number][] = [
+  ["shoot", BTN.shoot], ["dash", BTN.dash], ["p1", BTN.p1], ["p2", BTN.p2], ["ult", BTN.ult], ["reload", BTN.reload], ["interact", BTN.interact],
+  ["swap", BTN.swap], ["slot1", BTN.slot1], ["slot2", BTN.slot2], ["throw", BTN.throw], ["heal", BTN.heal], ["scope", BTN.scope],
+];
 
 export class Input {
   binds = loadBinds();
@@ -62,6 +91,8 @@ export class Input {
   /** Set while the rebinding UI waits for a key. */
   capture: ((code: string) => void) | null = null;
   enabled = true;
+  /** Bits the game masks out this frame (e.g. 1/2 while the shard draft overlay owns them). */
+  mask = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", (e) => {
@@ -96,16 +127,26 @@ export class Input {
       if (!this.down.has(code)) this.edges.add(code);
       this.down.add(code);
     });
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      if (this.capture) {
+        const c = this.capture;
+        this.capture = null;
+        c("Wheel");
+        return;
+      }
+      if (Math.abs(e.deltaY) > 2) this.edges.add("Wheel");
+    }, { passive: false });
     window.addEventListener("mouseup", (e) => this.down.delete(`Mouse${e.button}`));
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
   held(a: Action) {
-    return this.down.has(this.binds[a]);
+    return this.down.has(this.binds[a]) || (PAD[a] !== undefined && this.padHeld.has(PAD[a] ?? -1));
   }
 
   pressed(a: Action) {
-    return this.edges.has(this.binds[a]);
+    return this.edges.has(this.binds[a]) || (PAD[a] !== undefined && this.padEdges.has(PAD[a] ?? -1));
   }
 
   /** A raw key edge (UI shortcuts like F1/F2/Escape). */
@@ -147,7 +188,6 @@ export class Input {
       }
     });
     this.padPrev = new Set(this.padHeld);
-    if (ls.l > 0 || rs.l > 0 || this.padHeld.size) this.usingPad = this.usingPad || rs.l > 0;
   }
 
   /** Movement vector (keyboard or left stick). */
@@ -162,17 +202,16 @@ export class Input {
     return l > 1 ? { x: x / l, y: y / l } : { x, y };
   }
 
-  /** Game buttons (held) and edges (newly pressed) as BTN bitfields. Gamepad: RT shoot, A dash, LB/RB powers, X prism, Y ult. */
+  /** Game buttons (held) and edges (newly pressed) as BTN bitfields. */
   buttons(): { held: number; pressed: number } {
+    if (!this.enabled) return { held: 0, pressed: 0 };
     let held = 0;
     let pressed = 0;
-    const map: [Action, number, number][] = [["shoot", BTN.shoot, 7], ["dash", BTN.dash, 0], ["p1", BTN.p1, 4], ["p2", BTN.p2, 5], ["p3", BTN.p3, 2], ["ult", BTN.ult, 3]];
-    for (const [a, bit, padBtn] of map) {
-      if (this.held(a) || this.padHeld.has(padBtn)) held |= bit;
-      if (this.pressed(a) || this.padEdges.has(padBtn)) pressed |= bit;
+    for (const [a, bit] of BITS) {
+      if (this.held(a)) held |= bit;
+      if (this.pressed(a)) pressed |= bit;
     }
-    if (!this.enabled) return { held: 0, pressed: 0 };
-    return { held, pressed };
+    return { held: held & ~this.mask, pressed: pressed & ~this.mask };
   }
 
   /** Call at the end of each frame. */

@@ -1,19 +1,26 @@
-// Draws one frame of the arena from an interpolated View plus the locally predicted player
-// and predicted shots. Layers: backdrop → floor → zone → floor hazards → pillars → pickups →
-// projectiles → cores → overhead effects → particles/text → post (chromatic, flash, vignette).
+// Draws one frame of the match from an interpolated View plus the locally predicted player
+// and predicted shots. Layers: backdrop → floor/water → zone → floor effects → loot → low
+// terrain → projectiles → heroes → effects → line-of-sight shadows → walls → bushes →
+// roofs → smoke/supply → labels → particles/text → post (chromatic, flash, vignette).
 
-import { hasStatusBit, PF, PFLAG, PICKUPS, PROJ, type ArenaDef, type NetEffect, type NetPlayer, type NetProjectile, type Player } from "@prism/shared";
+import {
+  canSeePoint, hasStatusBit, ITEMS, PF, PFLAG, PLAYER, PROJ, roofAt, ACT, isThrowableId,
+  type GameEvent, type MapDef, type NetEffect, type NetLoot, type NetPlayer, type NetProjectile, type Player,
+} from "@prism/shared";
 import type { Fx } from "../fx/fx";
 import type { PredictedShot, View } from "../net/netview";
 import { Background } from "./background";
 import type { Camera } from "./camera";
-import { drawCore } from "./core";
 import { Floor } from "./floor";
 import { drawGlow, rainbow, withAlpha } from "./glow";
+import { drawHero } from "./hero";
+import { drawLoot, drawLootLabel } from "./items";
 import { colorHex, PAL } from "./palette";
-import { drawEffect, drawProjectileCustom, FLOOR_EFFECTS } from "./powers";
+import { drawEffect, drawProjectileCustom, FLOOR_EFFECTS, TOP_EFFECTS } from "./powers";
 import { drawPortalLinks } from "./powers/portal";
 import type { RenderCtx } from "./powers/types";
+import { drawShadows } from "./shadows";
+import { Terrain } from "./terrain";
 
 export interface FrameInput {
   view: View | null;
@@ -29,9 +36,14 @@ export interface FrameInput {
   colorblind: boolean;
   /** Music/zone intensity 0..1 (brightens the backdrop). */
   intensity: number;
-  /** Hunter's Eye / spectating: show cloaked players clearly. */
+  /** Hunter's Eye: show cloaked players clearly. */
   seeCloaked: boolean;
   debugHitboxes: boolean;
+  /** Whose eyes the shadows are cast from (you, or who you spectate). */
+  viewer: { x: number; y: number } | null;
+  /** The loot F would pick up (highlighted with a label). */
+  interact: NetLoot | null;
+  interactKey: string;
 }
 
 interface Trail {
@@ -39,17 +51,31 @@ interface Trail {
   seen: number;
 }
 
+const GRENADE_COLORS = { frag: ITEMS.throwables.frag.color, smoke: ITEMS.throwables.smoke.color, mine: ITEMS.throwables.mine.color };
+
 export class Renderer {
   private bg = new Background();
   floor: Floor | null = null;
+  terrain: Terrain | null = null;
+  private map: MapDef | null = null;
   private trails = new Map<number, Trail>();
   private frame = 0;
+  private shotAt = new Map<number, number>();
+  private hitAt = new Map<number, number>();
 
   constructor(private canvas: HTMLCanvasElement, private ctx: CanvasRenderingContext2D, public cam: Camera, public fx: Fx) {}
 
-  setArena(arena: ArenaDef) {
-    this.floor = new Floor(arena);
+  setMap(map: MapDef) {
+    this.map = map;
+    this.floor = new Floor(map);
+    this.terrain = new Terrain(map);
     this.trails.clear();
+  }
+
+  /** Animation cues from game events (recoil, hit flash). */
+  onEvent(e: GameEvent, now: number) {
+    if (e.t === "shoot" || e.t === "slash") this.shotAt.set(e.by, now);
+    if (e.t === "hit" && e.amount > 0) this.hitAt.set(e.target, now);
   }
 
   private trail(id: number, x: number, y: number, max: number): number[] {
@@ -100,12 +126,14 @@ export class Renderer {
     ctx.fillStyle = PAL.void;
     ctx.fillRect(0, 0, w, h);
     this.bg.draw(ctx, w, h, cam.x, cam.y, f.time, f.intensity);
-    if (!this.floor) return;
+    const map = this.map;
+    if (!this.floor || !this.terrain || !map) return;
 
     cam.apply(ctx);
     const bounds = cam.bounds(160);
     const invScale = 1 / cam.scale;
     const view = f.view;
+    const mePos = f.me ? { x: f.me.x + f.meOff.x, y: f.me.y + f.meOff.y } : null;
     const rc: RenderCtx = {
       ctx, time: f.time, dt: f.dt, myId: f.myId, fx: this.fx, invScale,
       color: (id) => colorHex(f.colors(id)),
@@ -113,40 +141,35 @@ export class Renderer {
       // (auras, tethers, clones) must use the same spot or they'd trail ~100 ms behind.
       player: (id) => {
         const p = view?.players.find((q) => q.id === id);
-        return p && id === f.myId && f.me ? { ...p, x: f.me.x + f.meOff.x, y: f.me.y + f.meOff.y, aim: f.me.aim } : p;
+        return p && id === f.myId && f.me && mePos ? { ...p, x: mePos.x, y: mePos.y, aim: f.me.aim } : p;
       },
       playerName: f.names,
-      pos: (id) => (id === f.myId && f.me ? { x: f.me.x + f.meOff.x, y: f.me.y + f.meOff.y } : view?.players.find((p) => p.id === id)),
+      pos: (id) => (id === f.myId && mePos ? mePos : view?.players.find((p) => p.id === id)),
       seeCloaked: f.seeCloaked,
     };
 
     this.floor.draw(ctx, f.time, bounds);
-    this.floor.drawEdge(ctx, f.time);
+    this.drawMapEdge(map, f.time);
 
     if (view) {
-      this.drawZone(view.g.zx, view.g.zy, view.g.zr, view.g.phase === "warn" ? { x: view.g.tx, y: view.g.ty, r: view.g.tr } : null, f.time);
-      // Floor-level effects (hazards, bubbles, rifts).
+      this.drawZone(view.g.zx, view.g.zy, view.g.zr, view.g.phase === "warn" || view.g.phase === "shrink" ? { x: view.g.tx, y: view.g.ty, r: view.g.tr } : null, f.time);
       for (const e of view.effects) if (FLOOR_EFFECTS.has(e.kind)) drawEffect(rc, e);
       drawPortalLinks(rc, view.effects);
-      this.drawPillars(this.floor.arena, view, f.time);
-      this.drawPickups(view, f.time);
-      for (const e of view.effects) if (!FLOOR_EFFECTS.has(e.kind)) drawEffect(rc, e);
+      for (const l of view.loot) if (l.x > bounds.x0 && l.x < bounds.x1 && l.y > bounds.y0 && l.y < bounds.y1) drawLoot(ctx, l, f.time, l.id === f.interact?.id);
+    }
+    this.terrain.drawSolids(ctx, bounds, f.time, false);
+    if (view) {
       this.drawProjectiles(rc, view.projectiles, f);
-      this.drawPlayers(rc, view.players, f);
+      this.drawShots(f);
+      this.drawPlayers(rc, view.players, f, mePos);
+      for (const e of view.effects) if (!FLOOR_EFFECTS.has(e.kind) && !TOP_EFFECTS.has(e.kind)) drawEffect(rc, e);
     }
-    // Predicted local shots on top of everything else's timing.
-    for (const s of f.shots) {
-      const col = colorHex(f.myColor);
-      const pts = this.trail(-s.shotId, s.x, s.y, 7);
-      this.drawTrail(pts, col, 9, 0.85 * s.alpha);
-      drawGlow(ctx, s.x, s.y, 24, col, 0.9 * s.alpha);
-      ctx.globalAlpha = s.alpha;
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, 4.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
+    if (f.viewer) drawShadows(ctx, map, f.viewer.x, f.viewer.y, bounds);
+    this.terrain.drawSolids(ctx, bounds, f.time, true);
+    this.terrain.drawBushes(ctx, bounds, f.time, mePos);
+    this.terrain.drawRoofs(ctx, bounds, f.viewer ? roofAt(map, f.viewer.x, f.viewer.y) : -1, f.dt || 0.016);
+    if (view) for (const e of view.effects) if (TOP_EFFECTS.has(e.kind)) drawEffect(rc, e);
+    if (f.interact) drawLootLabel(ctx, f.interact, invScale, f.interact.kind === "weapon" || f.interact.kind === "throwable" ? `${f.interactKey} — pick up` : null);
 
     this.fx.drawWorld(ctx, bounds, invScale);
 
@@ -160,19 +183,39 @@ export class Renderer {
     this.post(w, h, dpr);
   }
 
+  /** Darkness beyond the map edge, with a glowing border. */
+  private drawMapEdge(map: MapDef, time: number) {
+    const ctx = this.ctx;
+    const hh = map.half;
+    ctx.save();
+    ctx.fillStyle = "rgba(2,2,10,0.7)";
+    const big = new Path2D();
+    big.rect(-1e5, -1e5, 2e5, 2e5);
+    big.rect(-hh, -hh, hh * 2, hh * 2);
+    ctx.fill(big, "evenodd");
+    ctx.globalCompositeOperation = "lighter";
+    const pulse = 0.75 + 0.25 * Math.sin(time * 2);
+    ctx.strokeStyle = withAlpha(PAL.edge, 0.12 * pulse);
+    ctx.lineWidth = 40;
+    ctx.strokeRect(-hh, -hh, hh * 2, hh * 2);
+    ctx.strokeStyle = withAlpha("#d9fdff", 0.9);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-hh, -hh, hh * 2, hh * 2);
+    ctx.restore();
+  }
+
   private drawZone(x: number, y: number, r: number, next: { x: number; y: number; r: number } | null, time: number) {
     const ctx = this.ctx;
-    if (r > 6000) return;
     ctx.save();
     // Tint everything outside the safe circle.
     const outside = new Path2D();
     outside.rect(-1e5, -1e5, 2e5, 2e5);
     outside.arc(x, y, r, 0, Math.PI * 2, true);
-    ctx.fillStyle = "rgba(255,30,90,0.10)";
+    ctx.fillStyle = "rgba(255,30,90,0.12)";
     ctx.fill(outside, "evenodd");
     ctx.globalCompositeOperation = "lighter";
     // Crackling energy wall: jittered arc segments.
-    const segs = Math.max(48, Math.round(r / 12));
+    const segs = Math.min(720, Math.max(48, Math.round(r / 12)));
     for (let layer = 0; layer < 2; layer++) {
       ctx.strokeStyle = withAlpha(layer ? "#ffffff" : PAL.zone, layer ? 0.5 : 0.85);
       ctx.lineWidth = layer ? 1.5 : 5;
@@ -192,22 +235,6 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(x, y, r + 30, 0, Math.PI * 2);
     ctx.stroke();
-    // Random lightning arcs along the wall
-    for (let k = 0; k < 3; k++) {
-      const a = (Math.floor(time * 8) * 1.7 + k * 2.3) % (Math.PI * 2);
-      ctx.strokeStyle = withAlpha("#ffd0e0", 0.7);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      let px = x + Math.cos(a) * r;
-      let py = y + Math.sin(a) * r;
-      ctx.moveTo(px, py);
-      for (let s = 0; s < 5; s++) {
-        px += Math.cos(a) * 14 + (Math.random() - 0.5) * 22;
-        py += Math.sin(a) * 14 + (Math.random() - 0.5) * 22;
-        ctx.lineTo(px, py);
-      }
-      ctx.stroke();
-    }
     if (next) {
       ctx.strokeStyle = withAlpha(PAL.zoneSafe, 0.7);
       ctx.lineWidth = 3;
@@ -221,127 +248,48 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawPillars(arena: ArenaDef, view: View, time: number) {
+  private drawShots(f: FrameInput) {
     const ctx = this.ctx;
-    for (const p of arena.pillars) {
-      const live = view.pillars.get(p.id);
-      if (live?.dead) continue;
-      const hpF = live ? live.hp / p.maxHp : 1;
-      const sides = p.r > 80 ? 8 : 6;
-      const rot = p.id * 0.7;
-      // Base shadow
-      ctx.fillStyle = "rgba(0,0,0,0.35)";
+    const col = colorHex(f.myColor);
+    for (const s of f.shots) {
+      if (s.weapon === "rocket") {
+        this.drawRocket(s.x, s.y, s.vx, s.vy, col, s.alpha);
+        continue;
+      }
+      const pts = this.trail(-s.shotId * 16 - Math.round(s.vx + s.vy) % 16, s.x, s.y, s.weapon === "sniper" ? 12 : 6);
+      this.drawTrail(pts, s.weapon === "sniper" ? "#ffffff" : col, s.weapon === "shotgun" ? 5 : 8, 0.85 * s.alpha);
+      drawGlow(ctx, s.x, s.y, 20, col, 0.9 * s.alpha);
+      ctx.globalAlpha = s.alpha;
+      ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(p.x + 6, p.y + 10, p.r * 1.02, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, Math.max(2.5, s.r * 0.6), 0, Math.PI * 2);
       ctx.fill();
-      drawGlow(ctx, p.x, p.y, p.r * 2, PAL.crystal, 0.22 + 0.1 * Math.sin(time * 1.5 + p.id));
-      // Crystal body
-      const g = ctx.createLinearGradient(p.x - p.r, p.y - p.r, p.x + p.r, p.y + p.r);
-      g.addColorStop(0, "#9ff0ff");
-      g.addColorStop(0.45, "#3c6fd6");
-      g.addColorStop(1, "#1a1f6a");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      for (let i = 0; i < sides; i++) {
-        const a = rot + (i / sides) * Math.PI * 2;
-        const rr = p.r * (i % 2 ? 0.92 : 1);
-        const x = p.x + Math.cos(a) * rr;
-        const y = p.y + Math.sin(a) * rr;
-        if (i) ctx.lineTo(x, y);
-        else ctx.moveTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = "rgba(210,250,255,0.9)";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      // Facets
-      ctx.strokeStyle = "rgba(200,245,255,0.35)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      for (let i = 0; i < sides; i += 2) {
-        const a = rot + (i / sides) * Math.PI * 2;
-        ctx.moveTo(p.x + Math.cos(a) * p.r * 0.35, p.y + Math.sin(a) * p.r * 0.35);
-        ctx.lineTo(p.x + Math.cos(a) * p.r, p.y + Math.sin(a) * p.r);
-      }
-      ctx.stroke();
-      // Top highlight
-      drawGlow(ctx, p.x - p.r * 0.25, p.y - p.r * 0.3, p.r * 0.7, "#e6fbff", 0.35);
-      // Damage cracks
-      if (hpF < 0.99) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.4 + (1 - hpF) * 0.5})`;
-        ctx.lineWidth = 1.6;
-        const n = Math.ceil((1 - hpF) * 6);
-        for (let k = 0; k < n; k++) {
-          const a = rot * 3 + k * 2.4;
-          ctx.beginPath();
-          ctx.moveTo(p.x + Math.cos(a) * p.r * 0.1, p.y + Math.sin(a) * p.r * 0.1);
-          ctx.lineTo(p.x + Math.cos(a + 0.4) * p.r * 0.55, p.y + Math.sin(a + 0.4) * p.r * 0.55);
-          ctx.lineTo(p.x + Math.cos(a + 0.1) * p.r * 0.95, p.y + Math.sin(a + 0.1) * p.r * 0.95);
-          ctx.stroke();
-        }
-      }
+      ctx.globalAlpha = 1;
     }
   }
 
-  private drawPickups(view: View, time: number) {
+  private drawRocket(x: number, y: number, vx: number, vy: number, col: string, alpha: number) {
     const ctx = this.ctx;
-    for (const pk of view.pickups) {
-      const bob = Math.sin(time * 3 + pk.id) * 5;
-      const col = pk.kind === "heal" ? PAL.heal : pk.kind === "cooldown" ? PAL.cooldown : pk.kind === "ult" ? PAL.ult : rainbow(time * 0.4);
-      const x = pk.x;
-      const y = pk.y + bob;
-      drawGlow(ctx, x, y, PICKUPS.radius * 3.2, col, 0.75);
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(time * (pk.kind === "prism" ? 2 : 0.8));
-      ctx.fillStyle = withAlpha(col, 0.25);
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      const s = PICKUPS.radius;
-      ctx.moveTo(0, -s);
-      ctx.lineTo(s * 0.8, 0);
-      ctx.lineTo(0, s);
-      ctx.lineTo(-s * 0.8, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.rotate(-time * (pk.kind === "prism" ? 2 : 0.8));
-      ctx.strokeStyle = "#ffffff";
-      ctx.fillStyle = "#ffffff";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      if (pk.kind === "heal") {
-        ctx.moveTo(-7, 0);
-        ctx.lineTo(7, 0);
-        ctx.moveTo(0, -7);
-        ctx.lineTo(0, 7);
-        ctx.stroke();
-      } else if (pk.kind === "cooldown") {
-        ctx.arc(0, 0, 7, -Math.PI / 2, Math.PI * 1.2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(0, -5);
-        ctx.stroke();
-      } else if (pk.kind === "ult") {
-        for (let i = 0; i < 5; i++) {
-          const a = -Math.PI / 2 + (i * Math.PI * 4) / 5;
-          if (i) ctx.lineTo(Math.cos(a) * 8, Math.sin(a) * 8);
-          else ctx.moveTo(Math.cos(a) * 8, Math.sin(a) * 8);
-        }
-        ctx.closePath();
-        ctx.fill();
-      } else {
-        ctx.moveTo(0, -8);
-        ctx.lineTo(7, 6);
-        ctx.lineTo(-7, 6);
-        ctx.closePath();
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+    const a = Math.atan2(vy, vx);
+    if (Math.random() < 0.7) this.fx.particles.spawn(x - Math.cos(a) * 16, y - Math.sin(a) * 16, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, 0.5, 9, "#b9c4e8");
+    drawGlow(ctx, x - Math.cos(a) * 14, y - Math.sin(a) * 14, 26, "#ff8a2b", 0.9 * alpha);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    ctx.fillStyle = "#e9ecff";
+    ctx.beginPath();
+    ctx.roundRect(-14, -5, 22, 10, 4);
+    ctx.fill();
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(8, -5);
+    ctx.lineTo(16, 0);
+    ctx.lineTo(8, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(-14, -8, 6, 16);
+    ctx.restore();
   }
 
   private drawProjectiles(rc: RenderCtx, list: readonly NetProjectile[], f: FrameInput) {
@@ -351,61 +299,93 @@ export class Renderer {
       if (p.owner === f.myId && p.shotId && f.shots.some((s) => s.shotId === p.shotId && s.alpha > 0.5)) continue;
       if (drawProjectileCustom(rc, p)) continue;
       let col = colorHex(f.colors(p.owner));
+      if (p.kind === PROJ.rocket) {
+        this.drawRocket(p.x, p.y, p.vx, p.vy, col, 1);
+        continue;
+      }
+      if (p.kind === PROJ.grenade) {
+        const gc = isThrowableId(p.source) ? GRENADE_COLORS[p.source] : "#ffffff";
+        const blink = Math.sin(f.time * 16 + p.id) > 0;
+        ctx.fillStyle = "#151830";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = gc;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        if (blink) drawGlow(ctx, p.x, p.y, 22, gc, 0.9);
+        continue;
+      }
       if ((p.flags & PF.ricochet) !== 0) col = p.bounces >= 4 ? rainbow(f.time * 2 + p.id * 0.1) : ["#ffffff", "#7cf6ff", "#ff7bf2", "#ffd34d", "#9dff3a"][p.bounces] ?? col;
       const crit = (p.flags & PF.crit) !== 0;
-      const pts = this.trail(p.id, p.x, p.y, crit ? 10 : 7);
-      this.drawTrail(pts, crit ? "#ffd34d" : col, p.kind === PROJ.clone ? 6 : 9, 0.8);
-      drawGlow(ctx, p.x, p.y, crit ? 34 : 24, crit ? "#ffd34d" : col, 0.9);
+      const sniper = p.weapon === "sniper";
+      const pts = this.trail(p.id, p.x, p.y, crit || sniper ? 12 : 6);
+      this.drawTrail(pts, crit ? "#ffd34d" : sniper ? "#ffffff" : col, p.kind === PROJ.clone || p.weapon === "shotgun" ? 5 : 8, 0.8);
+      drawGlow(ctx, p.x, p.y, crit ? 34 : 22, crit ? "#ffd34d" : col, 0.9);
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(3, p.r * 0.65), 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, Math.max(2.5, p.r * 0.6), 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  private drawPlayers(rc: RenderCtx, list: readonly NetPlayer[], f: FrameInput) {
-    const ctx = this.ctx;
+  private drawPlayers(rc: RenderCtx, list: readonly NetPlayer[], f: FrameInput, mePos: { x: number; y: number } | null) {
+    const now = performance.now();
+    const map = this.map;
     for (const p of list) {
       if (!(p.flags & PFLAG.alive)) continue;
       const isMe = p.id === f.myId;
       const me = isMe ? f.me : null;
-      const x = me ? me.x + f.meOff.x : p.x;
-      const y = me ? me.y + f.meOff.y : p.y;
+      const x = me && mePos ? mePos.x : p.x;
+      const y = me && mePos ? mePos.y : p.y;
+      // Precise client-side sight check (the server sends a little extra so nothing pops).
+      if (!isMe && f.viewer && map && !canSeePoint(map, f.viewer.x, f.viewer.y, x, y, PLAYER.radius * 0.8)) continue;
       const cloaked = hasStatusBit(p.status, "cloaked");
       const alpha = cloaked ? (isMe ? 0.45 : f.seeCloaked ? 0.6 : 0.07) : 1;
       const col = colorHex(p.color);
       const dashing = (p.flags & PFLAG.dashing) !== 0 || (me ? me.dashT > 0 : false);
-      const pts = this.trail(p.id, x, y, dashing ? 14 : 10);
-      this.drawTrail(pts, col, dashing ? 30 : 18, (dashing ? 0.7 : 0.35) * alpha);
-      if (dashing && Math.random() < 0.8) this.fx.particles.spawn(x, y, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, 0.35, 10, col);
-      if (cloaked && !isMe && Math.random() < 0.15) this.fx.particles.spawn(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30, 0, -20, 0.5, 4, "#ffffff");
-      drawCore(ctx, {
-        x, y, color: col, colorIndex: p.color, hp: me ? Math.max(0, p.hp) : p.hp, aim: me ? me.aim : p.aim, time: f.time,
-        name: f.names(p.id), isMe, alpha, dashing, ultReady: (p.flags & PFLAG.ultReady) !== 0, bountied: hasStatusBit(p.status, "bountied"),
-        slowed: hasStatusBit(p.status, "slowed") || hasStatusBit(p.status, "timeBubble"), inverted: hasStatusBit(p.status, "inverted"),
-        airborne: hasStatusBit(p.status, "airborne") ? 1 : 0, invulnerable: hasStatusBit(p.status, "invulnerable") && !dashing,
-        disconnected: (p.flags & PFLAG.connected) === 0, colorblind: f.colorblind, invScale: rc.invScale, showBar: !isMe,
-      });
-      if (hasStatusBit(p.status, "overdrive")) {
-        // White-hot lightning aura
-        ctx.save();
-        ctx.globalCompositeOperation = "lighter";
-        ctx.strokeStyle = "rgba(255,255,255,0.85)";
-        ctx.lineWidth = 2;
-        for (let k = 0; k < 3; k++) {
-          ctx.beginPath();
-          let a = Math.random() * Math.PI * 2;
-          ctx.moveTo(x + Math.cos(a) * 30, y + Math.sin(a) * 30);
-          for (let s = 0; s < 4; s++) {
-            a += (Math.random() - 0.5) * 1.2;
-            const rr = 30 + Math.random() * 22;
-            ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
-          }
-          ctx.stroke();
-        }
-        ctx.restore();
+      if (dashing) {
+        const pts = this.trail(p.id, x, y, 12);
+        this.drawTrail(pts, col, 26, 0.6 * alpha);
+        if (Math.random() < 0.8) this.fx.particles.spawn(x, y, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, 0.35, 10, col);
       }
+      if (cloaked && !isMe && Math.random() < 0.15) this.fx.particles.spawn(x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30, 0, -20, 0.5, 4, "#ffffff");
+      const weapon = me ? me.inv.weapons[me.inv.active]?.id ?? null : p.weapon;
+      const rarity = me ? me.inv.weapons[me.inv.active]?.rarity ?? 0 : p.rarity;
+      const act = me ? (me.reloadT > 0 ? ACT.reloading : 0) | (me.healKind ? ACT.healing : 0) | (me.swingT > 0 ? ACT.swinging : 0) : p.act;
+      drawHero(rc.ctx, {
+        id: p.id, x, y, aim: me ? me.aim : p.aim, color: col, colorIndex: p.color, name: f.names(p.id), hp: me ? Math.max(0, me.hp) : p.hp,
+        armor: me ? me.armor : p.armor, weapon, rarity, isMe, alpha, ultReady: (p.flags & PFLAG.ultReady) !== 0, bountied: hasStatusBit(p.status, "bountied"),
+        invulnerable: hasStatusBit(p.status, "invulnerable") && !dashing, slowed: hasStatusBit(p.status, "slowed") || hasStatusBit(p.status, "timeBubble") || hasStatusBit(p.status, "shocked"),
+        disconnected: (p.flags & PFLAG.connected) === 0, colorblind: f.colorblind, invScale: rc.invScale, showBar: !isMe, time: f.time,
+        anim: {
+          speed: Math.hypot(p.vx, p.vy), dashing, reloading: (act & ACT.reloading) !== 0, healing: (act & ACT.healing) !== 0, charge: me ? me.charge : p.charge,
+          swinging: (act & ACT.swinging) !== 0, sinceShot: (now - (this.shotAt.get(p.id) ?? -1e9)) / 1000, sinceHit: (now - (this.hitAt.get(p.id) ?? -1e9)) / 1000,
+          airborne: hasStatusBit(p.status, "airborne") ? 1 : 0,
+        },
+      });
+      if (hasStatusBit(p.status, "overdrive")) this.drawOverdrive(x, y);
     }
+  }
+
+  private drawOverdrive(x: number, y: number) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 3; k++) {
+      ctx.beginPath();
+      let a = Math.random() * Math.PI * 2;
+      ctx.moveTo(x + Math.cos(a) * 28, y + Math.sin(a) * 28);
+      for (let s = 0; s < 4; s++) {
+        a += (Math.random() - 0.5) * 1.2;
+        const rr = 28 + Math.random() * 20;
+        ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawHitboxes(view: View, f: FrameInput) {
@@ -415,13 +395,13 @@ export class Renderer {
     ctx.lineWidth = 1.5;
     for (const p of view.players) {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 26, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, PLAYER.radius, 0, Math.PI * 2);
       ctx.stroke();
     }
     if (f.me) {
       ctx.strokeStyle = "rgba(255,255,0,0.9)";
       ctx.beginPath();
-      ctx.arc(f.me.x, f.me.y, 26, 0, Math.PI * 2);
+      ctx.arc(f.me.x, f.me.y, PLAYER.radius, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.strokeStyle = "rgba(255,80,80,0.9)";
@@ -436,15 +416,21 @@ export class Renderer {
       ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
       ctx.stroke();
     }
+    if (this.map) {
+      ctx.strokeStyle = "rgba(255,160,0,0.7)";
+      const b = this.cam.bounds(0);
+      for (const s of this.map.solids) if (!s.dead && s.x1 > b.x0 && s.x0 < b.x1 && s.y1 > b.y0 && s.y0 < b.y1) ctx.strokeRect(s.x0, s.y0, s.x1 - s.x0, s.y1 - s.y0);
+    }
     ctx.restore();
   }
 
   private post(w: number, h: number, dpr: number) {
     const ctx = this.ctx;
     const fx = this.fx;
+    void dpr;
     if (fx.chroma > 0.02) {
       // Chromatic aberration: shifted red/blue copies of the frame, added on top.
-      const shift = fx.chroma * 9 * dpr;
+      const shift = fx.chroma * 9 * this.cam.dpr;
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = 0.33 * fx.chroma;

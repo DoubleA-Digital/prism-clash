@@ -2,10 +2,11 @@
 // numbers, kill feed lines, hit-stop, trauma shake, chromatic flashes and sounds. Shake and
 // hit-stop only fire for events near you or about you.
 
-import { FX, PLAYER, type GameEvent, type SourceId } from "@prism/shared";
+import { FX, ITEMS, PLAYER, type GameEvent, type SolidKind, type SourceId, type WeaponId } from "@prism/shared";
 import { audio } from "../audio/audio";
 import type { Camera } from "../render/camera";
 import type { Floor } from "../render/floor";
+import { itemColor, lootName, rarityColor } from "../render/items";
 import { colorHex, PAL } from "../render/palette";
 import type { Fx } from "./fx";
 import { PSHAPE } from "./particles";
@@ -31,11 +32,27 @@ export interface EventContext {
   banner: (text: string, sub: string, color: string) => void;
   /** Damage you took (HUD damage flash + delayed bar). */
   onSelfHit: (amount: number) => void;
-  /** True while the slow-mo replay re-plays events: visuals only, no feed or banners. */
-  replaying: boolean;
   /** Players who fired recently (minimap reveal). */
   firedAt: Map<number, number>;
+  /** Kind of a destructible by id (for break particles and sounds). */
+  solidKind: (id: number) => SolidKind | null;
+  /** You were eliminated (the game starts spectating your killer). */
+  onEliminated: (killer: number) => void;
 }
+
+/** Shot sound per weapon: one synth voice, pitched and weighted per gun. */
+const SHOT_SOUND: Record<WeaponId, { pitch: number; gain: number }> = {
+  pistol: { pitch: 1, gain: 0.8 }, smg: { pitch: 1.25, gain: 0.55 }, rifle: { pitch: 0.9, gain: 0.75 }, shotgun: { pitch: 0.55, gain: 1.1 },
+  sniper: { pitch: 0.42, gain: 1.2 }, rocket: { pitch: 0.35, gain: 1 }, lance: { pitch: 1.6, gain: 0.9 }, blade: { pitch: 1.8, gain: 0.6 },
+};
+
+/** The sound of a gun going off (own shots play it at prediction time). */
+export function shotSound(weapon: WeaponId, x: number, y: number, own: boolean) {
+  const snd = SHOT_SOUND[weapon];
+  audio.sfx("shoot", x, y, { pitch: snd.pitch * (0.95 + Math.random() * 0.1), gain: snd.gain * (own ? 1 : 0.8), positional: !own });
+}
+
+const SOLID_COLORS: Partial<Record<SolidKind, string>> = { crate: "#c99a5b", barrel: "#ff8a2b", glass: "#8fe7ff", fence: "#ff2e88" };
 
 const near = (ec: EventContext, x: number, y: number, r = 900) => {
   const l = ec.listener();
@@ -45,30 +62,27 @@ const near = (ec: EventContext, x: number, y: number, r = 900) => {
 export function handleEvent(ec: EventContext, e: GameEvent, immediate: boolean) {
   const { fx, cam } = ec;
   void immediate;
-  if (e.t === "shoot") ec.firedAt.set(e.by, performance.now());
-  if (ec.replaying) {
-    // During the replay: only visuals and sound, never feed, banners or HUD changes.
-    const saved = { banner: ec.banner, onSelfHit: ec.onSelfHit, feed: ec.killFeed };
-    ec.banner = () => {};
-    ec.onSelfHit = () => {};
-    ec.killFeed = [];
-    try {
-      handleEvent({ ...ec, replaying: false }, e, immediate);
-    } finally {
-      ec.banner = saved.banner;
-      ec.onSelfHit = saved.onSelfHit;
-      ec.killFeed = saved.feed;
-    }
-    return;
-  }
+  if (e.t === "shoot" || e.t === "slash") ec.firedAt.set(e.by, performance.now());
   switch (e.t) {
     case "shoot": {
-      if (e.by === ec.myId) break; // own shots already flashed when predicted
+      const own = e.by === ec.myId;
+      // Own bullet shots already flashed when predicted; lance beams are server-only.
+      if (own && e.weapon !== "lance") break;
       const col = colorHex(ec.colorOf(e.by));
-      fx.particles.cone(e.x, e.y, 4, e.angle, 0.6, col, 380, 0.18, 3);
-      audio.sfx("shoot", e.x, e.y, { pitch: 0.95 + Math.random() * 0.1 });
+      fx.particles.cone(e.x, e.y, e.weapon === "shotgun" ? 8 : 4, e.angle, 0.6, col, 380, 0.18, 3);
+      shotSound(e.weapon, e.x, e.y, own);
       break;
     }
+    case "slash": {
+      const col = colorHex(ec.colorOf(e.by));
+      fx.particles.cone(e.x, e.y, 10, e.angle, 1.1, col, 420, 0.25, 4);
+      audio.sfx("dash", e.x, e.y, { pitch: 1.6, gain: 0.7 });
+      break;
+    }
+    case "deflect":
+      fx.particles.burst(e.x, e.y, 10, "#ffffff", 320, 0.3, 5, PSHAPE.spark);
+      audio.sfx("bounce", e.x, e.y, { pitch: 1.8, gain: 0.8 });
+      break;
     case "hit": {
       const col = colorHex(ec.colorOf(e.target));
       if (e.amount > 0) fx.damage(e.x, e.y - PLAYER.radius, e.amount, e.crit, e.by === ec.myId ? "#ffffff" : col);
@@ -97,6 +111,7 @@ export function handleEvent(ec: EventContext, e: GameEvent, immediate: boolean) 
       ec.floor?.ripple(e.x, e.y, 2, col);
       ec.killFeed.unshift({ killer: e.killer, victim: e.victim, source: e.source, at: performance.now() });
       if (ec.killFeed.length > 6) ec.killFeed.pop();
+      if (e.victim === ec.myId) ec.onEliminated(e.killer);
       audio.sfx("kill", e.x, e.y);
       if (e.killer === ec.myId) {
         fx.stop(FX.hitStopKill);
@@ -119,27 +134,65 @@ export function handleEvent(ec: EventContext, e: GameEvent, immediate: boolean) 
       if (e.size > 1) ec.floor?.ripple(e.x, e.y, 0.5, col);
       break;
     }
-    case "pillarHit":
-      fx.particles.burst(e.x, e.y, 5, PAL.crystal, 220, 0.4, 5, PSHAPE.shard);
-      if (near(ec, e.x, e.y, 700)) audio.sfx("crystal", e.x, e.y, { gain: 0.5 });
+    case "solidHit": {
+      const kind = ec.solidKind(e.id);
+      const col = SOLID_COLORS[kind ?? "crate"] ?? PAL.crystal;
+      fx.particles.burst(e.x, e.y, 4, col, 220, 0.35, 4, PSHAPE.shard);
+      if (near(ec, e.x, e.y, 600)) audio.sfx("crystal", e.x, e.y, { gain: 0.35, pitch: kind === "glass" ? 1.3 : 0.6 });
       break;
-    case "pillarBroken":
-      fx.particles.burst(e.x, e.y, 60, PAL.crystal, 700, 1.1, 14, PSHAPE.shard);
-      fx.particles.burst(e.x, e.y, 30, "#ffffff", 400, 0.6, 9);
-      fx.ring(e.x, e.y, e.r, e.r * 3, 0.6, PAL.crystal, 6);
-      ec.floor?.ripple(e.x, e.y, 1.5, PAL.crystal);
-      if (near(ec, e.x, e.y)) cam.addTrauma(0.25);
-      audio.sfx("shatter", e.x, e.y);
-      break;
-    case "pickup": {
-      const col = e.kind === "heal" ? PAL.heal : e.kind === "cooldown" ? PAL.cooldown : e.kind === "ult" ? PAL.ult : PAL.prism;
-      fx.particles.burst(e.x, e.y, 24, col, 300, 0.6, 8);
+    }
+    case "solidBroken": {
+      const kind = ec.solidKind(e.id);
+      const col = SOLID_COLORS[kind ?? "crate"] ?? PAL.crystal;
+      fx.particles.burst(e.x, e.y, kind === "glass" ? 40 : 28, col, 520, 0.9, 10, PSHAPE.shard);
       fx.ring(e.x, e.y, 10, 90, 0.4, col, 4);
-      audio.sfx(`pickup:${e.kind}`, e.x, e.y);
+      if (near(ec, e.x, e.y)) cam.addTrauma(0.12);
+      audio.sfx("shatter", e.x, e.y, { gain: kind === "glass" ? 1 : 0.7, pitch: kind === "glass" ? 1.2 : 0.7 });
+      break;
+    }
+    case "loot": {
+      const col = e.kind === "weapon" ? rarityColor(e.rarity) : itemColor(e.kind);
+      fx.particles.burst(e.x, e.y, 12, col, 240, 0.45, 6);
       if (e.by === ec.myId) {
-        const text = e.kind === "heal" ? "+20 HEALTH" : e.kind === "cooldown" ? "COOLDOWNS RESET" : e.kind === "ult" ? "+ULT CHARGE" : "PRISM CORE!";
-        fx.label(e.x, e.y - 50, text, e.kind === "prism" ? "Press F for your 3rd power" : "", col);
+        audio.sfx(e.kind === "shard" ? "pickup:prism" : e.kind === "medkit" || e.kind === "bandage" ? "pickup:heal" : "pickup", e.x, e.y, { positional: false });
+        fx.label(e.x, e.y - 46, lootName({ kind: e.kind, weapon: e.weapon, rarity: e.rarity, throwable: "frag", count: 1 }).toUpperCase(), "", col);
       }
+      break;
+    }
+    case "reload":
+      if (e.by === ec.myId) audio.sfx("uiClick", 0, 0, { positional: false, pitch: 0.7, gain: 0.8 });
+      break;
+    case "throw":
+      audio.sfx("dash", e.x, e.y, { pitch: 0.7, gain: 0.5 });
+      if (e.by === ec.myId) fx.label(e.x, e.y - 50, ITEMS.throwables[e.item].name.toUpperCase(), "", ITEMS.throwables[e.item].color);
+      break;
+    case "heal":
+      if (e.by !== ec.myId) break;
+      if (e.done) {
+        const col = e.item === "shield" ? "#5fd0ff" : PAL.heal;
+        audio.sfx(e.item === "shield" ? "pickup:cooldown" : "pickup:heal", 0, 0, { positional: false });
+        const l = ec.listener();
+        fx.ring(l.x, l.y, 10, 80, 0.4, col, 4);
+        fx.label(l.x, l.y - 60, e.item === "shield" ? `+${ITEMS.shield.amount} SHIELD` : `+${ITEMS[e.item].heal} HEALTH`, "", col);
+      } else audio.sfx("uiHover", 0, 0, { positional: false, pitch: 0.8 });
+      break;
+    case "supply":
+      if (e.landed) {
+        fx.particles.burst(e.x, e.y, 50, "#ffd34d", 600, 1, 10, PSHAPE.shard);
+        fx.ring(e.x, e.y, 20, 220, 0.6, "#ffd34d", 6);
+        ec.floor?.ripple(e.x, e.y, 2, "#ffd34d");
+        audio.sfx("boom", e.x, e.y, { gain: 0.8 });
+      } else {
+        ec.banner("SUPPLY DROP INCOMING", "Epic and legendary gear: check the map", "#ffd34d");
+        audio.sfx("zoneWarn", 0, 0, { positional: false, pitch: 1.3 });
+      }
+      break;
+    case "shard":
+      if (e.by === ec.myId) ec.banner("PRISM SHARD", "Pick a new power", "#ff7bf2");
+      break;
+    case "win": {
+      const mine = e.winner === ec.myId;
+      ec.banner(mine ? "VICTORY ROYALE" : e.winner ? `${ec.nameOf(e.winner).toUpperCase()} WINS` : "MATCH OVER", mine ? "Last one standing" : "", mine ? "#ffd34d" : "#ffffff");
       break;
     }
     case "dash": {
@@ -203,7 +256,7 @@ export function handleEvent(ec: EventContext, e: GameEvent, immediate: boolean) 
     }
     case "zoneStage":
       audio.sfx("zoneWarn", 0, 0, { positional: false });
-      ec.banner("THE ZONE IS CLOSING", "Get inside the dashed circle", "#ff3d6e");
+      ec.banner("THE ZONE IS MOVING", "Get inside the dashed circle", "#ff3d6e");
       break;
     case "haunt": {
       const col = colorHex(ec.colorOf(e.by));

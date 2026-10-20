@@ -1,9 +1,10 @@
 // Modal dialogs: Settings (tabs: general + controls with rebinding) and How to Play
-// (controls diagram, round flow, scoring, survival tips, power and ultimate cards).
+// (controls diagram, match flow, weapons and loot, survival tips, power and ultimate cards).
 
-import { allPowers, allUlts, POINTS } from "@prism/shared";
+import { allPowers, allUlts, MATCH, RARITY, WEAPON_IDS, WEAPONS } from "@prism/shared";
 import { audio } from "../audio/audio";
-import { ACTION_LABELS, DEFAULT_BINDS, keyLabel, saveBinds, type Action, type Input } from "../input/input";
+import { ACTION_LABELS, DEFAULT_BINDS, keyLabel, PAD_LABELS, saveBinds, type Action, type Input } from "../input/input";
+import { weaponIcon } from "../render/items";
 import { session } from "../net/session";
 import { saveSettings, settings } from "../settings";
 import { coreCanvas } from "./coreView";
@@ -133,7 +134,7 @@ export function settingsModal(input: Input, close: () => void): HTMLElement {
         "div",
         null,
         h("div.group", null, h("div.panel-title", null, "Keyboard and mouse (click to rebind)"), binds),
-        h("div.group", null, h("div.panel-title", null, "Gamepad"), h("div.pad-map", null, pad("L stick", "Move"), pad("R stick", "Aim"), pad("RT", "Shoot"), pad("A", "Dash"), pad("LB / RB", "Powers"), pad("X", "Prism power"), pad("Y", "Ultimate"), pad("D-pad", "Menus"))),
+        h("div.group", null, h("div.panel-title", null, "Gamepad"), h("div.pad-map", null, PAD_LABELS.map(([k, t]) => pad(k, t)), pad("D-pad", "Menus"))),
       ),
   };
   const done = () => {
@@ -156,29 +157,34 @@ function basics(input: Input): HTMLElement {
   const b = input.binds;
   const kl = (a: Action) => keyLabel(b[a]);
   const flow = [
-    { n: "1", t: "DRAFT", d: "Pick one of 3 powers in 15 seconds. Picks stay hidden until all lock in.", c: "var(--violet)" },
-    { n: "2", t: "FIGHT", d: "3-2-1, then a shrinking zone forces everyone together.", c: "var(--magenta)" },
-    { n: "3", t: "REPLAY", d: "The killing blow plays back in slow motion.", c: "var(--gold)" },
-    { n: "4", t: "STANDINGS", d: "Points are added, then the next draft starts.", c: "var(--cyan)" },
+    { n: "1", t: "PICK", d: "Choose your ultimate and draft your first power.", c: "var(--violet)" },
+    { n: "2", t: "DROP", d: `${MATCH.fighters} fighters spawn across a big map with just a pistol.`, c: "var(--cyan)" },
+    { n: "3", t: "LOOT", d: "Grab guns, shields, heals and grenades from the floor, crates and supply drops.", c: "var(--gold)" },
+    { n: "4", t: "SURVIVE", d: "The zone closes in six stages. Last one standing wins.", c: "var(--magenta)" },
   ];
   return h(
     "div",
     null,
     h("div.group", null, h("div.panel-title", null, "Controls"), h("div.keys-diagram", null,
       h("div.cluster", null, h("div.cap-row", null, cap(kl("up"), "Up", "", 0)), h("div.cap-row", null, cap(kl("left"), "Left", "", 1), cap(kl("down"), "Down", "", 2), cap(kl("right"), "Right", "", 3))),
-      h("div.cluster", null, h("div.cap-row", null, cap(kl("p1"), "Power 1", ".hot", 1), cap(kl("p2"), "Power 2", ".hot", 2), cap(kl("ult"), "Ultimate", ".ult", 3)), h("div.cap-row", null, cap(kl("dash"), "Dash", ".wide", 0))),
-      h("div.cap", null, h("div.mouse"), h("div.d", null, "Aim + shoot")),
+      h("div.cluster", null,
+        h("div.cap-row", null, cap(kl("p1"), "Power 1", ".hot", 1), cap(kl("p2"), "Power 2", ".hot", 2), cap(kl("ult"), "Ultimate", ".ult", 3)),
+        h("div.cap-row", null, cap(kl("reload"), "Reload", "", 1), cap(kl("interact"), "Pick up", "", 2), cap(kl("throw"), "Grenade", "", 3), cap(kl("heal"), "Heal", "", 4)),
+        h("div.cap-row", null, cap(kl("dash"), "Dash", ".wide", 0), cap(`${kl("slot1")}/${kl("slot2")}`, "Weapons", "", 1))),
+      h("div.cap", null, h("div.mouse"), h("div.d", null, "Aim + shoot · right click scopes")),
     )),
-    h("div.group", null, h("div.panel-title", null, "Round flow"), h("div.flow", null, flow.map((f) => h("div.step", { style: { "--c": f.c } }, h("div.no", null, f.n), h("b", null, f.t), h("span", null, f.d))))),
-    h("div.group", null, h("div.panel-title", null, `Scoring: first to ${POINTS.toWin} wins`), h("div.scoring", null,
-      POINTS.placement.map((p, i) => h(`div.score-chip${i === 0 ? ".gold" : ""}`, null, h("div.pl-n", null, ["1ST", "2ND", "3RD", "4TH", "5TH"][i] ?? ""), h("div.pts", null, `+${p}`))),
-      h("div.score-chip", null, h("div.pl-n", null, "PER KILL"), h("div.pts", null, `+${POINTS.perKill}`)),
-    )),
+    h("div.group", null, h("div.panel-title", null, "Match flow"), h("div.flow", null, flow.map((f) => h("div.step", { style: { "--c": f.c } }, h("div.no", null, f.n), h("b", null, f.t), h("span", null, f.d))))),
+    h("div.group", null, h("div.panel-title", null, "Weapons (rarity adds damage and magazine size)"), h("div.scoring", null,
+      RARITY.map((r, i) => h(`div.score-chip${i === 3 ? ".gold" : ""}`, { style: { color: r.color } }, h("div.pl-n", null, r.name.toUpperCase()), h("div.pts", null, `×${r.damage.toFixed(2)}`))),
+    ), h("div.weapon-row", null, WEAPON_IDS.map((id) => {
+      const icon = weaponIcon(id, 1, 120, 44);
+      return h("div.weapon-chip", null, h("img", { src: icon.toDataURL(), alt: "" }), h("span", null, WEAPONS[id].name));
+    }))),
     h("div.group", null, h("div.panel-title", null, "Survive"), h("div.tips", null,
-      h("div.tip", null, h("div.demo", null, h("div.pips", null, [0, 1, 2, 3, 4].map((n) => h("i", { style: { "--n": String(n) } })))), h("h4", null, "AMMO"), h("p", null, "Your blaster holds 5 shots that reload one at a time. Time your bursts, and dash for brief invincibility.")),
-      h("div.tip", null, h("div.demo", null, h("div.nebula"), coreCanvas(0, rem(2.6), { ghost: false })), h("h4", null, "HIDE IN NEBULAS"), h("p", null, "Purple clouds hide you from enemies who are far away, until you shoot.")),
-      h("div.tip", null, h("div.demo", null, coreCanvas(4, rem(2.6), { ghost: true }), h("div.lava")), h("h4", null, "GHOSTS HAUNT"), h("p", null, `Out of the round? Spectate with the arrows. Every 10s drop lava (${kl("p1")}) or a slow field (${kl("p2")}) at your cursor.`)),
-      h("div.tip", null, h("div.demo", null, h("span", { style: { fontSize: "2rem" } }, "💥")), h("h4", null, "WALL SLAMS"), h("p", null, "Knock enemies into walls for bonus damage. Grab pickups: health, cooldown reset, ult charge, and the rare Prism Core.")),
+      h("div.tip", null, h("div.demo", null, h("span", { style: { fontSize: "2rem" } }, "🛡️")), h("h4", null, "SHIELDS + HEALS"), h("p", null, `Shield Cells absorb damage first. Hold ${kl("heal")} to bandage up or use a medkit: you move slowly and shooting cancels it.`)),
+      h("div.tip", null, h("div.demo", null, h("div.nebula"), coreCanvas(0, rem(2.6), { ghost: false })), h("h4", null, "HIDE AND FLANK"), h("p", null, "Walls cast shadows: you can't see around corners, and neither can they. Bushes hide you from anyone far away until you shoot.")),
+      h("div.tip", null, h("div.demo", null, h("span", { style: { fontSize: "2rem" } }, "💎")), h("h4", null, "PRISM SHARDS"), h("p", null, "Rare shards in crates and supply drops open the draft mid-match: a second power, or a swap.")),
+      h("div.tip", null, h("div.demo", null, coreCanvas(4, rem(2.6), { ghost: true }), h("div.lava")), h("h4", null, "GHOSTS HAUNT"), h("p", null, `Eliminated? Watch your killer or switch with the arrows. Every 10s drop lava (${kl("p1")}) or a slow field (${kl("p2")}) at your cursor.`)),
     )),
   );
 }
@@ -188,7 +194,7 @@ function powerCards(kind: "powers" | "ults"): HTMLElement {
   return h(
     "div",
     null,
-    h("div.hint", { style: { textAlign: "left", marginBottom: "0.8rem" } }, kind === "powers" ? "Draft one before every round. You hold two at a time (a new pick replaces your older power)." : "Pick one of three at match start. It charges as you deal and take damage."),
+    h("div.hint", { style: { textAlign: "left", marginBottom: "0.8rem" } }, kind === "powers" ? "Draft one before the drop; Prism Shards let you draft more mid-match. You hold two at a time (a new pick replaces your older power)." : "Pick one of three at match start. It charges as you deal and take damage."),
     h("div.pgrid", null, list.map((p) => {
       const cd = "cooldown" in p && typeof p.cooldown === "number" ? `${p.cooldown}s cooldown` : "ULTIMATE";
       return h("div.pcard", { style: { "--c": p.color } }, h("img", { src: iconDataUrl(p.id, rem(3.6)), alt: "" }), h("div", null, h("b", null, p.name.toUpperCase()), h("div.cdt", null, cd), h("span", null, p.description)));

@@ -1,5 +1,5 @@
 // Screen router: shows the right DOM screen for the session phase, plus overlays
-// (settings, how-to, Tab scoreboard, F1/F2 panels, spectator bar, replay bars, toasts).
+// (settings, how-to, Tab scoreboard, F1/F2 panels, spectator bar, shard draft, toasts).
 // A screen is rebuilt only when its structural key changes; data changes call its update() hook,
 // so animations never replay and typing/focus are never interrupted.
 
@@ -13,10 +13,10 @@ import { history } from "./history";
 import { lobbyScreen } from "./lobby";
 import { menuScreen } from "./menu";
 import { howToModal, settingsModal } from "./modals";
-import { replayBars, spectateBar } from "./overlays";
+import { spectateBar } from "./overlays";
 import { debugPanel, netPanel } from "./panels";
-import { draftScreen, revealScreen, ultScreen } from "./picks";
-import { matchEndScreen, scoreboard, standingsScreen } from "./results";
+import { draftScreen, shardOverlay, ultScreen } from "./picks";
+import { matchEndScreen, scoreboard } from "./results";
 import type { Built } from "./types";
 
 const CLICKABLE = ".btn, .tab, .seg button, .swatch, .switch, .x-btn, .code-tile, .card, .bind-btn";
@@ -32,8 +32,10 @@ export class Screens {
   private board: ReturnType<typeof scoreboard> | null = null;
   private boardAt = 0;
   private spectate: ReturnType<typeof spectateBar> | null = null;
-  private replayEl: HTMLElement | null = null;
+  private shard: ReturnType<typeof shardOverlay> | null = null;
+  private shardKey = "";
   private autoStart = false;
+  private prevPhase = "";
   private lastHover: Element | null = null;
 
   constructor(private game: Game) {
@@ -81,11 +83,7 @@ export class Screens {
       case "ultSelect":
         return `ult|${s.ultOptions.join()}`;
       case "draft":
-        return `draft|${s.round}|${s.draftPickNumber}|${s.draftOptions.join()}`;
-      case "countdown":
-        return `countdown|${s.round}|${s.loadouts.length}`;
-      case "standings":
-        return `standings|${s.round}|${JSON.stringify(s.room?.players.map((p) => p.points))}`;
+        return `draft|${s.draftOptions.join()}`;
       case "matchEnd":
         return `matchEnd|${s.matchEnd ? 1 : 0}`;
       default:
@@ -94,6 +92,9 @@ export class Screens {
   }
 
   private sync() {
+    // Solo practice: a rematch drops straight into the next match.
+    if (this.prevPhase === "matchEnd" && session.phase === "lobby" && session.room && session.room.players.filter((p) => !p.bot).length === 1) this.autoStart = true;
+    this.prevPhase = session.phase;
     // Practice: once our fresh room exists and we're host, start right away.
     if (this.autoStart && session.phase === "lobby" && session.room && session.room.hostId === session.myId) {
       this.autoStart = false;
@@ -144,10 +145,6 @@ export class Screens {
         return ultScreen();
       case "draft":
         return draftScreen();
-      case "countdown":
-        return session.loadouts.length ? revealScreen() : null;
-      case "standings":
-        return standingsScreen();
       case "matchEnd":
         return matchEndScreen(this.root);
       default:
@@ -251,13 +248,19 @@ export class Screens {
       this.spectate.el.remove();
       this.spectate = null;
     }
-    if (session.phase === "replay" && !this.replayEl) {
-      this.replayEl = replayBars();
-      this.root.append(this.replayEl);
-    } else if (session.phase !== "replay" && this.replayEl) {
-      this.replayEl.remove();
-      this.replayEl = null;
+    // In-match Prism Shard draft: the card overlay, while the game keeps running.
+    const key = inRound && session.shard ? session.shard.options.join() : "";
+    if (key !== this.shardKey) {
+      this.shardKey = key;
+      this.shard?.dispose();
+      this.shard?.el.remove();
+      this.shard = null;
+      if (key) {
+        this.shard = shardOverlay();
+        this.root.append(this.shard.el);
+      }
     }
+    this.shard?.tick();
     this.net?.update();
     this.debug?.update();
     // Gamepad: D-pad navigates, A clicks the focused button in menus.

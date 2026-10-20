@@ -110,6 +110,6 @@ input { font: inherit; color: inherit; }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, -1rem) scale(0.9); } 12%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -0.6rem); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .screen, .screen *, .overlay, .overlay *, .toast, .scoreboard, .spectate-bar, .replay-bars, .replay-bars * { animation-duration: 0.01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  .screen, .screen *, .overlay, .overlay *, .toast, .scoreboard, .spectate-bar, .shard-overlay, .shard-overlay * { animation-duration: 0.01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
   .btn::after { display: none; }
 }

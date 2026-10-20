@@ -3,8 +3,8 @@
 
 import { withAlpha } from "../render/glow";
 import { PAL } from "../render/palette";
-import { session } from "../net/session";
 import { clamp01, DISPLAY, easeBack, easeOut, font, MONO, outlined, panel, UIFONT } from "./hudKit";
+import { drawPickupPrompt, drawWeapons } from "./hudLoadout";
 import { drawFeed, drawMinimap } from "./hudMap";
 import type { HudInput } from "./hudTypes";
 import { Vitals } from "./hudVitals";
@@ -49,7 +49,11 @@ export class Hud {
     const u = Math.max(0.75, Math.min(1.3, Math.min(W / 1600, H / 900) * 1.1));
 
     this.drawEdges(ctx, h, W, H);
-    if (h.self && h.self.alive) this.vitals.draw(ctx, h, u);
+    if (h.self && h.self.alive) {
+      this.vitals.draw(ctx, h, u);
+      drawWeapons(ctx, h, u);
+      drawPickupPrompt(ctx, h, u);
+    }
     if (h.g) this.drawTop(ctx, h, u);
     drawFeed(ctx, h, u);
     if (h.g) drawMinimap(ctx, h, u);
@@ -92,9 +96,9 @@ export class Hud {
     const closing = g.phase === "shrink";
     const flash = 0.5 + 0.5 * Math.sin(h.time * 12);
     const hot = warn || closing;
-    // Round tab hanging under the panel
+    // Map name + match clock tab hanging under the panel
     ctx.font = font(800, 12 * u, DISPLAY);
-    const rt = `ROUND ${h.round}`;
+    const rt = `${h.mapName.toUpperCase()} · ${fmt(g.matchTime)}`;
     const rw = ctx.measureText(rt).width + 28 * u;
     ctx.beginPath();
     ctx.roundRect(cx - rw / 2, y + ph - 6 * u, rw, 26 * u, [0, 0, 10 * u, 10 * u]);
@@ -136,13 +140,15 @@ export class Hud {
     ctx.font = font(700, 12 * u, UIFONT);
     ctx.fillStyle = PAL.dim;
     ctx.fillText("ALIVE", ax, y + 18 * u);
-    const total = Math.max(g.alive, session.playerCount);
+    const total = Math.max(g.alive, h.fighters);
     ctx.font = font(800, 28 * u, MONO);
     outlined(ctx, `${g.alive}`, ax - 14 * u, y + 42 * u, "#ffffff", "rgba(5,4,13,0.6)", 4 * u);
+    // One pip per fighter, two rows of six.
     for (let i = 0; i < total; i++) {
-      const px = ax + 6 * u + i * 12 * u;
+      const px = ax + 10 * u + (i % 6) * 10 * u;
+      const py = y + 37 * u + Math.floor(i / 6) * 10 * u;
       ctx.beginPath();
-      ctx.arc(px, y + 42 * u, 4 * u, 0, Math.PI * 2);
+      ctx.arc(px, py, 3.2 * u, 0, Math.PI * 2);
       ctx.fillStyle = i < g.alive ? "#ffffff" : "rgba(255,255,255,0.15)";
       ctx.fill();
     }

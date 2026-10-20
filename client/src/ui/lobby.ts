@@ -1,7 +1,7 @@
 // Lobby: room code + invite link, each player as a live glowing core, color picker, ready
-// toggle, and grouped host controls (fill with bots, difficulty, arena, kick, start).
+// toggle, and grouped host controls (fill with bots, difficulty, map, kick, start).
 
-import { LAYOUT_NAMES, LAYOUTS, NET, PLAYER_COLORS, type Difficulty, type LayoutId, type RoomState } from "@prism/shared";
+import { HUMAN_COLORS, mapName, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, type Difficulty, type MapId, type RoomState } from "@prism/shared";
 import { audio } from "../audio/audio";
 import { session } from "../net/session";
 import { coreCanvas } from "./coreView";
@@ -52,13 +52,13 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     prevReady = nowReady;
     const fill = room.settings.fillBots;
     for (let i = room.players.length; i < NET.maxPlayers; i++) {
-      const next = PLAYER_COLORS.find((c) => !room.players.some((p) => p.color === c.id))?.id ?? i;
+      const next = PLAYER_COLORS.slice(0, HUMAN_COLORS).find((c) => !room.players.some((p) => p.color === c.id))?.id ?? i % HUMAN_COLORS;
       slots.push(
         h(
           `div.slot.empty${fill ? ".bot" : ""}`,
           { style: { "--i": String(i) } },
           coreCanvas(next, rem(2.7), { ghost: true }),
-          fill ? "A bot fills this slot at start" : [h("span.pulse-dot"), "Open slot: share the code"],
+          [h("span.pulse-dot"), fill ? "Open seat: share the code (bots fill in)" : "Open seat: share the code"],
         ),
       );
     }
@@ -67,7 +67,7 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     const swatches = h(
       "div.swatches",
       null,
-      PLAYER_COLORS.map((c) =>
+      PLAYER_COLORS.slice(0, HUMAN_COLORS).map((c) =>
         h(
           `button.swatch${me?.color === c.id ? ".on" : ""}${taken.has(c.id) ? ".taken" : ""}`,
           { style: { "--c": c.hex }, title: c.name, "aria-label": `${c.name}${taken.has(c.id) ? " (taken)" : ""}`, "data-nav": "1", onclick: () => session.lobbySet({ color: c.id }) },
@@ -84,13 +84,13 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     const waiting = humans.filter((p) => p.id !== room.hostId && !p.ready);
     const enoughPlayers = fill || room.players.length >= 2;
     const canStart = host && waiting.length === 0 && enoughPlayers;
-    const botsToAdd = fill ? NET.maxPlayers - room.players.length : 0;
+    const botsToAdd = fill ? MATCH.fighters - room.players.length : 0;
 
     let why: (HTMLElement | string)[];
     if (!host) why = ["Waiting for the host to start the match"];
     else if (!enoughPlayers) why = ["Need 2+ players: invite a friend or turn on ", h("b", null, "bots")];
     else if (waiting.length) why = ["Waiting for ", h("b", null, waiting.map((p) => p.name).join(", ")), " to ready up"];
-    else why = [botsToAdd ? `Everyone is ready. ${botsToAdd} bot${botsToAdd > 1 ? "s" : ""} will join.` : "Everyone is ready"];
+    else why = [botsToAdd ? `Everyone is ready. ${botsToAdd} bot${botsToAdd > 1 ? "s" : ""} will fill the ${MATCH.fighters} fighter drop.` : "Everyone is ready"];
 
     const ready = !!me?.ready || host;
     const code = room.code.split("");
@@ -110,7 +110,7 @@ export function lobbyScreen(toast: (t: string) => void): Built {
         ),
         h("div.share-hint", null, "Friends open this link to jump straight into your room."),
       ),
-      h("div.panel.roster", null, h("div.panel-title", null, "Players", h("span.count", null, `${room.players.length}/${NET.maxPlayers}`)), h("div.slots", null, slots)),
+      h("div.panel.roster", null, h("div.panel-title", null, "Players", h("span.count", null, `${humans.length}/${NET.maxPlayers}`)), h("div.slots", null, slots)),
     );
 
     const right = h(
@@ -136,7 +136,7 @@ export function lobbyScreen(toast: (t: string) => void): Built {
         h("div.panel-title", null, "Match settings", host ? null : h("span.lock", null, "HOST ONLY")),
         h("div.toggle", null, h("span", null, "Fill empty slots with bots"), fillSwitch),
         h("div.sec", null, h("span.label", null, "Bot difficulty"), seg<Difficulty>(["easy", "normal", "hard"], (o) => o, room.settings.botDifficulty, (v) => session.lobbySet({ botDifficulty: v }))),
-        h("div.sec", null, h("span.label", null, "Arena"), seg<LayoutId | "auto">(["auto", ...LAYOUTS], (o) => (o === "auto" ? "Rotate" : LAYOUT_NAMES[o].split(" ")[0] ?? o), room.settings.layout, (v) => session.lobbySet({ layout: v }))),
+        h("div.sec", null, h("span.label", null, "Map"), seg<MapId | "auto">(["auto", ...PLAY_MAPS], (o) => (o === "auto" ? "Alternate" : mapName(o)), room.settings.map, (v) => session.lobbySet({ map: v }))),
       ),
       h(
         "div.start-area",

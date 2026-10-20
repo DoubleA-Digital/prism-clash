@@ -1,32 +1,30 @@
-// UI-side store of finished rounds, built from the session's roundEnd messages. The session only
-// keeps the latest round, but the Tab scoreboard and standings want placements for every round.
+// UI-side tally of the current match for the Tab scoreboard: kills and damage per player,
+// accumulated from game events as they play out, plus who has been eliminated (and when).
 
-import type { Placement } from "@prism/shared";
 import { session } from "../net/session";
 
-export interface RoundRecord {
-  round: number;
-  placements: Placement[];
-  winnerId: number;
-}
-
-class RoundHistory {
-  rounds: RoundRecord[] = [];
+class MatchTally {
   private dmg = new Map<number, number>();
+  private kill = new Map<number, number>();
+  private out = new Map<number, number>();
 
   install() {
-    // Match damage per player, accumulated from hit events as they play out.
     session.onGameEvent((e) => {
       if (e.t === "hit" && e.by > 0 && e.by !== e.target) this.dmg.set(e.by, (this.dmg.get(e.by) ?? 0) + e.amount);
-    });
-    session.subscribe(() => {
-      const re = session.roundEnd;
-      if (re && !this.rounds.some((r) => r.round === re.round)) this.rounds.push({ round: re.round, placements: re.placements, winnerId: re.winnerId });
-      if (session.phase === "lobby" || session.phase === "ultSelect" || session.phase === "menu") {
-        this.rounds = [];
-        this.dmg.clear();
+      if (e.t === "kill") {
+        if (e.killer) this.kill.set(e.killer, (this.kill.get(e.killer) ?? 0) + 1);
+        this.out.set(e.victim, this.out.size + 1);
       }
     });
+    session.subscribe(() => {
+      if (session.phase === "lobby" || session.phase === "ultSelect" || session.phase === "menu") this.reset();
+    });
+  }
+
+  reset() {
+    this.dmg.clear();
+    this.kill.clear();
+    this.out.clear();
   }
 
   damage(playerId: number): number {
@@ -34,19 +32,13 @@ class RoundHistory {
   }
 
   kills(playerId: number): number {
-    let k = 0;
-    for (const r of this.rounds) k += r.placements.find((p) => p.playerId === playerId)?.kills ?? 0;
-    return k;
+    return this.kill.get(playerId) ?? 0;
   }
 
-  /** Placement (1-based) per finished round, or null when the player was not in that round. */
-  places(playerId: number): (number | null)[] {
-    return this.rounds.map((r) => r.placements.find((p) => p.playerId === playerId)?.place ?? null);
-  }
-
-  wins(playerId: number): number {
-    return this.rounds.filter((r) => r.winnerId === playerId).length;
+  /** Order of elimination (1 = first out), or 0 if still in. */
+  eliminated(playerId: number): number {
+    return this.out.get(playerId) ?? 0;
   }
 }
 
-export const history = new RoundHistory();
+export const history = new MatchTally();

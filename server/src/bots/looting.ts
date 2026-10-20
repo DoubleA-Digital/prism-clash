@@ -1,21 +1,13 @@
 // What bots want from the floor and their bags: which loot is worth walking to, when to
 // press F on a weapon, which gun suits the current range, and when to heal.
 
-import { BOTS, interactTarget, ITEMS, LOOT, magSize, pickHeal, WEAPONS, type Loot, type Player, type WeaponId, type WeaponItem, type World } from "@prism/shared";
+import { BOTS, interactTarget, ITEMS, LOOT, magSize, pickHeal, weaponRange, WEAPONS, type Loot, type Player, type WeaponId, type WeaponItem, type World } from "@prism/shared";
 
 const TIER: Record<WeaponId, number> = { pistol: 0, smg: 2.2, rifle: 3, shotgun: 2.6, sniper: 2.5, rocket: 2.4, lance: 2.7, blade: 1.6 };
 
 export const gunScore = (id: WeaponId, rarity: number) => TIER[id] + rarity * 1.1;
 
-/** Effective fighting range of a weapon. */
-export function weaponRange(id: WeaponId): number {
-  const d = WEAPONS[id];
-  if (d.kind === "blade") return d.reach + 30;
-  if (d.kind === "lance") return d.beamRange * 0.55;
-  if (d.kind === "shotgun") return 300;
-  if (d.kind === "rocket") return 750;
-  return d.speed * d.life * 0.85;
-}
+export { weaponRange };
 
 /** How much a bot wants a loot item right now (0 = ignore). */
 export function lootValue(me: Player, l: Loot): number {

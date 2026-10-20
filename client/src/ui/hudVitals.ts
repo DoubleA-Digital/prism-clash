@@ -1,11 +1,13 @@
-// Bottom-of-screen HUD: health (with delayed white damage bar and low-HP pulse), ammo pips,
-// dash readiness, the power slots with radial cooldown sweeps, and the ultimate meter.
+// Bottom-of-screen HUD: health (with delayed white damage bar and low-HP pulse) and shield
+// armor, heal and grenade counts, dash readiness, the power slots with radial cooldown
+// sweeps, and the ultimate meter.
 
-import { PLAYER, SHOT, powerDef, type PowerId, type UltId } from "@prism/shared";
+import { ITEMS, PLAYER, powerDef, type LootKind, type PowerId, type UltId } from "@prism/shared";
 import { drawShapeMarker } from "../render/core";
 import { withAlpha } from "../render/glow";
+import { itemIcon } from "../render/items";
 import { colorHex, PAL } from "../render/palette";
-import { keyLabel } from "../input/input";
+import { capLabel } from "../input/input";
 import { clamp01, DISPLAY, font, keycap, MONO, outlined, panel, UIFONT } from "./hudKit";
 import type { HudInput } from "./hudTypes";
 import { iconCanvas, powerInfo } from "./icons";
@@ -54,7 +56,7 @@ export class Vitals {
     const pulse = 0.5 + 0.5 * Math.sin(h.time * (6 + low * 6));
     const x = 26 * u;
     const w = 340 * u;
-    const ph = 112 * u;
+    const ph = 132 * u;
     const y = h.h - ph - 22 * u;
     panel(ctx, x - 14 * u, y, w + 28 * u, ph, 16 * u, {
       border: low > 0 ? withAlpha(PAL.danger, 0.45 + 0.5 * pulse * low) : withAlpha(myCol, 0.45),
@@ -131,39 +133,60 @@ export class Vitals {
     ctx.font = font(800, 19 * u, MONO);
     outlined(ctx, `${Math.ceil(hp)}`, x + w - 10 * u, by + bh / 2 + 1, "#ffffff", "rgba(5,4,13,0.8)", 4 * u);
 
-    // Ammo pips
-    const ay = by + bh + 22 * u;
-    ctx.textAlign = "left";
-    ctx.font = font(700, 12 * u, UIFONT);
-    ctx.fillStyle = PAL.dim;
-    ctx.fillText("AMMO", x, ay);
-    const pw = 27 * u;
-    const gap = 5 * u;
-    for (let i = 0; i < SHOT.ammoMax; i++) {
-      const px = x + 46 * u + i * (pw + gap);
-      const full = i < h.ammo.ammo;
-      const filling = i === h.ammo.ammo;
+    // Shield armor: a segmented blue bar under the health bar.
+    const sy = by + bh + 6 * u;
+    const sh = 8 * u;
+    ctx.beginPath();
+    ctx.roundRect(x, sy, w, sh, 4 * u);
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fill();
+    const armorF = clamp01(self.armor / ITEMS.shield.max);
+    if (armorF > 0) {
+      ctx.save();
       ctx.beginPath();
-      ctx.roundRect(px, ay - 7 * u, pw, 14 * u, 5 * u);
-      ctx.fillStyle = "rgba(255,255,255,0.1)";
-      ctx.fill();
-      if (full || filling) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.roundRect(px, ay - 7 * u, pw, 14 * u, 5 * u);
-        ctx.clip();
-        ctx.fillStyle = full ? myCol : withAlpha(myCol, 0.5);
-        if (full) {
-          ctx.shadowColor = myCol;
-          ctx.shadowBlur = 8;
-        }
-        ctx.fillRect(px, ay - 7 * u, pw * (full ? 1 : clamp01(h.ammo.reload)), 14 * u);
-        ctx.restore();
-      }
+      ctx.roundRect(x, sy, w, sh, 4 * u);
+      ctx.clip();
+      ctx.fillStyle = "#5fd0ff";
+      ctx.shadowColor = "#5fd0ff";
+      ctx.shadowBlur = 8;
+      ctx.fillRect(x, sy, w * armorF, sh);
+      ctx.restore();
+      ctx.fillStyle = "rgba(5,4,13,0.7)";
+      ctx.fillRect(x + w / 2 - 1, sy, 2, sh);
+    }
+
+    // Heals and grenades: icon + count, with the key to use them.
+    const ay = sy + sh + 22 * u;
+    const me = h.me;
+    const counts: [LootKind, number][] = [
+      ["bandage", self.bandages],
+      ["medkit", self.medkits],
+      ["throwable", self.throws],
+    ];
+    let cx = x;
+    ctx.textAlign = "left";
+    for (const [kind, n] of counts) {
+      const isz = 24 * u;
+      ctx.globalAlpha = n > 0 ? 1 : 0.3;
+      ctx.drawImage(itemIcon(kind, Math.round(isz), kind === "throwable" ? (self.throwable ?? "frag") : "frag"), cx, ay - isz / 2, isz, isz);
+      ctx.font = font(800, 15 * u, MONO);
+      outlined(ctx, `${n}`, cx + isz + 3 * u, ay + 1, "#ffffff", "rgba(5,4,13,0.8)", 3 * u);
+      ctx.globalAlpha = 1;
+      cx += isz + 30 * u;
+    }
+    ctx.font = font(700, 11 * u, UIFONT);
+    ctx.fillStyle = PAL.dim;
+    ctx.fillText(`${capLabel(h.input.binds.heal)} HEAL · ${capLabel(h.input.binds.throw)} THROW`, cx - 4 * u, ay + 1);
+    // Healing channel progress across the health bar.
+    if (me?.healKind) {
+      const total = ITEMS[me.healKind].time;
+      const p = clamp01(1 - me.healT / total);
+      ctx.fillStyle = "rgba(93,255,157,0.9)";
+      ctx.fillRect(x, by + bh - 3 * u, w * p, 3 * u);
     }
     // Dash readiness
-    const dx = x + 46 * u + SHOT.ammoMax * (pw + gap) + 10 * u;
-    const dw = x + w - dx;
+    const dw = 92 * u;
+    const dx = x + w - dw;
     const ready = self.dashCd <= 0;
     const f = ready ? 1 : 1 - self.dashCd / PLAYER.dash.cooldown;
     ctx.beginPath();
@@ -184,7 +207,7 @@ export class Vitals {
     ctx.textAlign = "center";
     ctx.font = font(800, 11 * u, DISPLAY);
     ctx.fillStyle = ready ? "#0a0820" : "#ffffff";
-    ctx.fillText(`DASH · ${keyLabel(h.input.binds.dash).toUpperCase()}`, dx + dw / 2, ay + 1);
+    ctx.fillText(`DASH · ${capLabel(h.input.binds.dash)}`, dx + dw / 2, ay + 1);
   }
 
   private drawPowers(ctx: CanvasRenderingContext2D, h: HudInput, u: number) {
@@ -193,14 +216,13 @@ export class Vitals {
     const size = 70 * u;
     const gap = 14 * u;
     const ultSize = 84 * u;
-    const keys = [h.input.binds.p1, h.input.binds.p2, h.input.binds.p3];
+    const keys = [h.input.binds.p1, h.input.binds.p2];
     interface Slot { id: PowerId | UltId | null; cd: number; recast: boolean; key: string; ult: number | null; index: number }
     const slots: Slot[] = [];
     self.slots.forEach((s, i) => {
-      if (i === 2 && !s) return;
-      slots.push({ id: s?.id ?? null, cd: s?.cd ?? 0, recast: (s?.recast ?? 0) > 0, key: keyLabel(keys[i] ?? ""), ult: null, index: i });
+      slots.push({ id: s?.id ?? null, cd: s?.cd ?? 0, recast: (s?.recast ?? 0) > 0, key: capLabel(keys[i] ?? ""), ult: null, index: i });
     });
-    if (self.ult) slots.push({ id: self.ult.id, cd: 0, recast: false, key: keyLabel(h.input.binds.ult), ult: self.ult.charge, index: 9 });
+    if (self.ult) slots.push({ id: self.ult.id, cd: 0, recast: false, key: capLabel(h.input.binds.ult), ult: self.ult.charge, index: 9 });
     const widths = slots.map((s) => (s.ult !== null ? ultSize : size));
     const total = widths.reduce((a, b) => a + b, 0) + (slots.length - 1) * gap;
     let x = h.w / 2 - total / 2;

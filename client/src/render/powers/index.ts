@@ -28,6 +28,7 @@ import { drawPhantomDash, drawSigil } from "./phantom";
 import { drawHexFlash } from "./hex";
 import { drawMagnet } from "./magnet";
 import { drawVoidBurst } from "./cloak";
+import { drawBeam, drawMine, drawSlash, drawSmoke, drawSupply } from "../combat-fx";
 import type { EffectDrawer, ProjectileDrawer, RenderCtx } from "./types";
 
 export const EFFECT_DRAWERS: Partial<Record<EffectKind, EffectDrawer>> = {
@@ -59,6 +60,11 @@ export const EFFECT_DRAWERS: Partial<Record<EffectKind, EffectDrawer>> = {
   hexFlash: drawHexFlash,
   magnet: drawMagnet,
   voidBurst: drawVoidBurst,
+  smoke: drawSmoke,
+  mine: drawMine,
+  beam: drawBeam,
+  slash: drawSlash,
+  supplyDrop: drawSupply,
 };
 
 export const PROJECTILE_DRAWERS: Partial<Record<SourceId, ProjectileDrawer>> = {
@@ -68,7 +74,10 @@ export const PROJECTILE_DRAWERS: Partial<Record<SourceId, ProjectileDrawer>> = {
 };
 
 /** Effects drawn under players (floor hazards) vs over them. */
-export const FLOOR_EFFECTS: ReadonlySet<EffectKind> = new Set<EffectKind>(["lava", "slowField", "molten", "meteorWarn", "bubble", "rift", "rewindTrail"]);
+export const FLOOR_EFFECTS: ReadonlySet<EffectKind> = new Set<EffectKind>(["lava", "slowField", "molten", "meteorWarn", "bubble", "rift", "rewindTrail", "mine"]);
+
+/** Effects drawn over everything else (smoke hides what's inside it, supply drops fall from the sky). */
+export const TOP_EFFECTS: ReadonlySet<EffectKind> = new Set<EffectKind>(["smoke", "supplyDrop"]);
 
 export function drawEffect(rc: RenderCtx, e: NetEffect) {
   const d = EFFECT_DRAWERS[e.kind];

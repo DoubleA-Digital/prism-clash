@@ -1,4 +1,4 @@
-/* Modals (settings, how to play), overlays (spectator, replay), dev panels. */
+/* Modals (settings, how to play), overlays (spectator), dev panels. */
 
 .overlay { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(8, 6, 28, 0.78), rgba(2, 1, 8, 0.92)); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; animation: fade-in 0.2s ease both; z-index: 20; padding: 1rem; }
 .modal { width: min(56rem, 96vw); max-height: 92vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; animation: modal-in 0.4s var(--back) both; }
@@ -87,17 +87,7 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .spectate-bar .who small { display: block; font-family: var(--ui); font-size: 0.7rem; letter-spacing: 0.3em; color: var(--dim); }
 .spectate-bar .keys { color: var(--dim); font-weight: 600; font-size: 0.95rem; }
 .spectate-bar .keys b { color: var(--gold); }
-.replay-bars { position: absolute; inset: 0; pointer-events: none; }
-.replay-bars::before, .replay-bars::after { content: ""; position: absolute; left: 0; right: 0; height: 12vh; background: #000; animation: bars 0.5s var(--ease) both; }
-.replay-bars::before { top: 0; transform-origin: top; }
-.replay-bars::after { bottom: 0; transform-origin: bottom; }
 @keyframes bars { from { transform: scaleY(0); } to { transform: none; } }
-.replay-title { position: absolute; bottom: 2.2vh; left: 0; right: 0; text-align: center; z-index: 2; animation: fade-in 0.4s 0.3s both; }
-.replay-title .tt { font-family: var(--display); font-weight: 900; letter-spacing: 0.5em; font-size: 0.8rem; color: var(--magenta); text-shadow: 0 0 1rem var(--magenta); padding-left: 0.5em; }
-.replay-title .kv { font-family: var(--display); font-weight: 800; font-size: 1.35rem; letter-spacing: 0.08em; margin-top: 0.15rem; }
-.replay-title .kv i { font-style: normal; color: #fff; margin: 0 0.7rem; opacity: 0.8; }
-.replay-rec { position: absolute; top: 2.4vh; left: 2rem; z-index: 2; display: flex; align-items: center; gap: 0.6rem; font-family: var(--mono); font-weight: 800; letter-spacing: 0.2em; font-size: 0.85rem; }
-.replay-rec::before { content: ""; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--danger); box-shadow: 0 0 1rem var(--danger); animation: blink 1s infinite; }
 
 /* Dev panels */
 .netpanel { position: absolute; top: 3rem; left: 0.8rem; width: 19rem; font-family: var(--mono); font-size: 0.78rem; padding: 0.9rem; z-index: 25; border-radius: 1rem; }
@@ -110,3 +100,8 @@ input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:focus::-web
 .debugpanel .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
 .debugpanel .grid button { padding: 0.25rem; border-radius: 0.5rem; background: rgba(255, 255, 255, 0.05); }
 .debugpanel .grid img { width: 2.5rem; height: 2.5rem; }
+
+/* How to play: the arsenal row. */
+.weapon-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
+.weapon-chip { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; padding: 0.5rem 0.7rem; border-radius: 0.8rem; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(124, 246, 255, 0.15); font-family: var(--display); font-size: 0.62rem; letter-spacing: 0.08em; color: #dfe3ff; }
+.weapon-chip img { width: 7.5rem; height: 2.75rem; }

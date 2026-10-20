@@ -119,10 +119,10 @@ export function menuScreen(actions: MenuActions, input: Input): Built {
         raw("div", "prism-fan", PRISM_SVG),
         h("h1.logo", { "aria-label": "Prism Clash" }, word("PRISM"), word("CLASH", ".sub")),
       ),
-      h("div.tagline", null, "Neon battle royale", h("i"), "2 to 5 players", h("i"), "First to 15"),
+      h("div.tagline", null, "Neon looter-shooter", h("i"), "12 fighters", h("i"), "Last one standing"),
       card,
     ),
-    h("div.keyhints", null, hint(`${b.up}`, ""), hint(b.left, ""), hint(b.down, ""), hint(b.right, " move"), hint(b.shoot, " shoot"), hint(b.dash, " dash"), hint(b.p1, ""), hint(b.p2, " powers"), hint(b.ult, " ultimate"), h("span", null, "Gamepad supported")),
+    h("div.keyhints", null, hint(`${b.up}`, ""), hint(b.left, ""), hint(b.down, ""), hint(b.right, " move"), hint(b.shoot, " shoot"), hint(b.reload, " reload"), hint(b.interact, " pick up"), hint(b.heal, " heal"), hint(b.throw, " grenade"), hint(b.dash, " dash"), hint(b.p1, ""), hint(b.p2, " powers"), hint(b.ult, " ultimate"), h("span", null, "Gamepad supported")),
   );
 
   // Mouse parallax: logo, light fan and menu card drift at different depths.

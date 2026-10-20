@@ -203,3 +203,12 @@ export function actFrame(p: Player, f: InputFrame, dt: number): FrameOut {
   }
   return out;
 }
+
+/** Effective fighting range of a weapon (aim guides, bot ranges). */
+export function weaponRange(id: WeaponId): number {
+  const d = WEAPONS[id];
+  if (d.kind === "blade") return d.reach + 30;
+  if (d.kind === "lance") return d.beamRange * 0.55;
+  if (d.kind === "shotgun") return d.speed * d.life * 0.8;
+  return d.speed * d.life * 0.9;
+}

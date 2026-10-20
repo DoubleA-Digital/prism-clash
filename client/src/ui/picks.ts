@@ -2,6 +2,7 @@
 // and the simultaneous loadout reveal where every player's cards flip over together.
 
 import { MATCH, PLAYER_COLORS, type PowerId, type UltId } from "@prism/shared";
+import { keyLabel, loadBinds, type Action } from "../input/input";
 import { session } from "../net/session";
 import { coreCanvas } from "./coreView";
 import { h, raw } from "./dom";
@@ -11,9 +12,9 @@ import type { Built } from "./types";
 
 const CLOCK = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8.5" r="5.8"/><path d="M8 5.2v3.6l2.3 1.4"/></svg>`;
 const BOLT = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.2 1 3 9h4l-1 6 7-9H9z"/></svg>`;
-const EMBLEM = `<svg viewBox="0 0 64 64" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"><path d="M32 8 56 52H8z" fill="rgba(255,255,255,0.08)"/><path d="M32 8 32 52M20 30h24" opacity=".55"/></svg>`;
 
 const colorOf = (id: number) => PLAYER_COLORS[session.playerColor(id)]?.hex ?? "#fff";
+const keyName = (a: Action) => keyLabel(loadBinds()[a]);
 
 function card(id: PowerId | UltId, i: number, ult: boolean, badge: string | null, onPick: () => void): HTMLElement {
   const info = powerInfo(id);
@@ -61,7 +62,7 @@ function pickScreen(cfg: PickCfg): Built {
   const remaining0 = session.phaseRemaining();
   const total = Math.max(cfg.total, remaining0, 1);
 
-  const pips = (session.room?.players ?? []).map((p) => {
+  const pips = (session.room?.players ?? []).filter((p) => !p.bot).map((p) => {
     const st = h("span.st", null, "THINKING");
     const pip = h("div.pip", { style: { "--c": colorOf(p.id) } }, coreCanvas(p.color, rem(1.5)), h("span", null, p.name), st);
     return { id: p.id, pip, st };
@@ -148,7 +149,7 @@ export function ultScreen(): Built {
   return pickScreen({
     kicker: "MATCH START",
     title: "CHOOSE YOUR ULTIMATE",
-    hint: ["It charges as you deal and take damage. Press ", h("b", null, "R"), " (or Y) when the ring is full. You keep it all match."],
+    hint: ["It charges as you deal and take damage. Press ", h("b", null, keyName("ult")), " (or Y) when the ring is full. You keep it all match."],
     ids: session.ultOptions,
     ult: true,
     badge: () => null,
@@ -158,44 +159,50 @@ export function ultScreen(): Built {
 }
 
 export function draftScreen(): Built {
-  const round = session.round + (session.phase === "draft" ? 1 : 0);
-  const comeback = session.draftOptions.length > 3;
-  const hint: (string | HTMLElement)[] =
-    session.draftPicks > 1 ? [`Pick ${session.draftPickNumber} of ${session.draftPicks}: you start with two powers`] : ["Your new pick replaces your older power"];
-  if (comeback) hint.push(" · ", h("b", null, "Comeback bonus: you get a 4th option"));
   return pickScreen({
-    kicker: `ROUND ${round}`,
+    kicker: "BEFORE THE DROP",
     title: "DRAFT A POWER",
-    hint,
+    hint: ["Your first power. Find ", h("b", null, "Prism Shards"), " in crates and supply drops to draft a second one mid-match."],
     ids: session.draftOptions,
     ult: false,
-    badge: (i) => (comeback && i === 3 ? "COMEBACK" : null),
-    total: round <= 1 ? MATCH.firstDraftSeconds : MATCH.draftSeconds,
+    badge: () => null,
+    total: MATCH.draftSeconds,
     pick: (i) => session.pickPower(i),
   });
 }
 
-export function revealScreen(): Built {
-  const cards = session.loadouts.map((l, i) => {
-    const col = colorOf(l.playerId);
-    const powers = l.slots.filter((s): s is PowerId => !!s);
-    return h(
-      "div.rv",
-      { style: { "--c": col, "--i": String(i) } },
-      h(
-        "div.rv-card",
-        null,
-        h("div.face.back", null, raw("div", "", EMBLEM)),
-        h(
-          "div.face.front",
-          null,
-          coreCanvas(session.playerColor(l.playerId), rem(3)),
-          h("div.n", null, session.playerName(l.playerId), l.playerId === session.myId ? h("span.you", null, "YOU") : null),
-          h("div.loadout", null, powers.map((s, j) => h("div.slot-ic", { style: { "--pc": powerInfo(s).color, "--j": String(j) } }, h("img", { src: iconDataUrl(s, rem(3.2)), alt: powerInfo(s).name }), h("span", null, powerInfo(s).name.toUpperCase())))),
-          l.ult ? h("div.ult-row", null, h("img", { src: iconDataUrl(l.ult, rem(1.4)), alt: "" }), h("span", null, powerInfo(l.ult).name.toUpperCase())) : null,
-        ),
-      ),
-    );
-  });
-  return { el: h("div.screen.passthrough.reveal-screen", null, h("div.reveal-wrap", null, h("h2.phase-title", null, "LOADOUTS LOCKED"), h("div.reveal", null, cards))) };
+/**
+ * The in-match Prism Shard draft: the same cards as an overlay while you keep playing.
+ * Pick with a click or the number keys (1-3 belong to the draft while it's open).
+ */
+export function shardOverlay(): { el: HTMLElement; tick: () => void; dispose: () => void } {
+  const offer = session.shard;
+  const ids = offer?.options ?? [];
+  const replaces = offer?.replaces ?? null;
+  const cards = h("div.cards");
+  cards.append(...ids.map((id, i) => card(id, i, false, replaces ? null : "NEW SLOT", () => session.pickShard(i))));
+  const fill = h("div.fill");
+  const num = h("div.num", null, String(Math.ceil(offer?.total ?? 0)));
+  const el = h(
+    "div.shard-overlay",
+    null,
+    h("div.pick-head", null, h("div.kicker", null, "PRISM SHARD"), h("h2.phase-title", null, "PICK A POWER"), h("div.hint", null, replaces ? ["Replaces ", h("b", null, powerInfo(replaces).name), " · keys 1-3 or click"] : ["Fills your empty power slot · keys 1-3 or click"])),
+    h("div.pick-timer", null, h("div.track", null, fill), num),
+    cards,
+  );
+  const onKey = (e: KeyboardEvent) => {
+    const n = Number(e.key);
+    if (n >= 1 && n <= ids.length) session.pickShard(n - 1);
+  };
+  window.addEventListener("keydown", onKey);
+  const tick = () => {
+    const o = session.shard;
+    if (!o) return;
+    const rem0 = Math.max(0, (o.endsAt - performance.now()) / 1000);
+    fill.style.transform = `scaleX(${Math.max(0, Math.min(1, rem0 / o.total))})`;
+    const t = String(Math.ceil(rem0));
+    if (num.textContent !== t) num.textContent = t;
+  };
+  tick();
+  return { el, tick, dispose: () => window.removeEventListener("keydown", onKey) };
 }
