@@ -1,7 +1,7 @@
 // Room lifecycle, rejoin, host migration, validation and fuzzing with garbage messages.
 import { afterEach, describe, expect, test } from "vitest";
 import type { WebSocket } from "ws";
-import { C2S, decode, MATCH, NET, Rng, S2C, type ClientMsg, type ServerMsg } from "@prism/shared";
+import { C2S, decode, DEFAULT_HERO, HERO_IDS, MATCH, NET, Rng, S2C, type ClientMsg, type ServerMsg } from "@prism/shared";
 import { Room } from "../src/rooms/room";
 import { rateCheck, sanitizeName } from "../src/validate";
 
@@ -48,6 +48,27 @@ describe("room", () => {
     expect(r.phase).toBe("ultSelect");
     // Bots get colors beyond the five human ones, all distinct.
     expect(new Set([...r.members.values()].map((m) => m.color)).size).toBe(MATCH.fighters);
+  });
+
+  test("heroes: picks are validated and synced, bots wear distinct heroes while any are free", () => {
+    const r = mkRoom();
+    const a = r.addHuman(1, "Ann", "t1", fakeWs().ws, "ip")!;
+    expect(a.hero).toBe(DEFAULT_HERO);
+    r.handle(a, { type: C2S.lobbySet, hero: "vex" });
+    expect(a.hero).toBe("vex");
+    r.handle(a, { type: C2S.lobbySet, hero: "notAHero" } as unknown as ClientMsg);
+    expect(a.hero).toBe("vex");
+    expect(r.roomState().players.find((p) => p.id === 1)?.hero).toBe("vex");
+    r.handle(a, { type: C2S.start });
+    const bots = [...r.members.values()].filter((m) => m.bot);
+    // 7 heroes are free for the first 7 bots, then they repeat as evenly as possible.
+    const first = bots.slice(0, HERO_IDS.length - 1).map((m) => m.hero);
+    expect(new Set(first).size).toBe(first.length);
+    expect(first).not.toContain("vex");
+    for (const m of r.members.values()) expect(HERO_IDS).toContain(m.hero);
+    // No hero picks once the match has started.
+    r.handle(a, { type: C2S.lobbySet, hero: "glitch" });
+    expect(a.hero).toBe("vex");
   });
 
   test("a whole bot-filled match runs from start to results, with interest-managed snapshots", () => {
