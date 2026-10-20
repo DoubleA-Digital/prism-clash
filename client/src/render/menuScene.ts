@@ -1,11 +1,20 @@
-// Animated backdrop behind the menus: the starfield, a slowly turning arena outline,
-// and five player cores chasing each other and trading shots.
+// Animated backdrop behind the menus: the starfield, a slowly turning arena outline, and
+// five chibi heroes circling each other and trading shots.
 
-import { PLAYER_COLORS } from "@prism/shared";
+import { HERO_IDS, PLAYER_COLORS, type HeroId, type WeaponId } from "@prism/shared";
 import { session } from "../net/session";
 import { Background } from "./background";
-import { drawCore } from "./core";
+import { CHIBI_TIMING, drawHero, idleAnim } from "./chibi";
 import { drawGlow, withAlpha } from "./glow";
+
+const CAST: { hero: HeroId; weapon: WeaponId; rarity: number }[] = [
+  { hero: HERO_IDS[1] ?? "blaze", weapon: "rifle", rarity: 3 },
+  { hero: HERO_IDS[4] ?? "vex", weapon: "sniper", rarity: 2 },
+  { hero: HERO_IDS[3] ?? "drip", weapon: "shotgun", rarity: 1 },
+  { hero: HERO_IDS[2] ?? "nova", weapon: "smg", rarity: 2 },
+  { hero: HERO_IDS[5] ?? "pixel", weapon: "lance", rarity: 3 },
+];
+const HERO_SCALE = 1.55;
 
 interface Bolt {
   x: number;
@@ -26,6 +35,9 @@ export class MenuScene {
   private tx = 0;
   private ty = 0;
   private calm = 0;
+  private walk = [0, 0, 0, 0, 0];
+  private last: { x: number; y: number }[] = [];
+  private shotAt = [-9, -9, -9, -9, -9];
 
   constructor() {
     window.addEventListener("mousemove", (e) => {
@@ -66,8 +78,8 @@ export class MenuScene {
     // Cores orbiting
     const pos = PLAYER_COLORS.map((c, i) => {
       const a = time * (0.35 + i * 0.04) + (i / 5) * Math.PI * 2;
-      const r = 220 + Math.sin(time * 0.7 + i * 1.3) * 90;
-      return { x: Math.cos(a) * r, y: Math.sin(a) * r * 0.75, c };
+      const r = 405 + Math.sin(time * 0.7 + i * 1.3) * 45;
+      return { x: Math.cos(a) * r * 1.12, y: Math.sin(a) * r * 0.78, c };
     });
     this.fireT -= dt;
     if (this.fireT <= 0) {
@@ -79,6 +91,7 @@ export class MenuScene {
       if (a && b) {
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
         this.bolts.push({ x: a.x, y: a.y, vx: Math.cos(ang) * 700, vy: Math.sin(ang) * 700, life: 0.6, color: a.c.hex });
+        this.shotAt[i] = time;
       }
     }
     for (const b of this.bolts) {
@@ -88,14 +101,27 @@ export class MenuScene {
       drawGlow(ctx, b.x, b.y, 22, b.color, Math.min(1, b.life * 3) * (1 - this.calm * 0.7));
     }
     this.bolts = this.bolts.filter((b) => b.life > 0);
-    pos.forEach((p, i) => {
+    // Back to front, so the lower hero overlaps.
+    const order = pos.map((p, i) => ({ p, i })).sort((u, v) => u.p.y - v.p.y);
+    for (const { p, i } of order) {
       const target = pos[(i + 2) % 5];
       const aim = target ? Math.atan2(target.y - p.y, target.x - p.x) : 0;
-      drawCore(ctx, {
-        x: p.x, y: p.y, color: p.c.hex, colorIndex: i, hp: 100, aim, time, name: "", isMe: false, alpha: 0.95 - this.calm * 0.78, dashing: false,
-        ultReady: i === Math.floor(time / 3) % 5, bountied: false, slowed: false, inverted: false, airborne: 0, invulnerable: false,
-        disconnected: false, colorblind: false, invScale: 1, showBar: false,
-      });
-    });
+      const prev = this.last[i] ?? p;
+      const moved = Math.hypot(p.x - prev.x, p.y - prev.y);
+      this.last[i] = { x: p.x, y: p.y };
+      this.walk[i] = (this.walk[i] ?? 0) + (moved / HERO_SCALE) * CHIBI_TIMING.stridePerUnit;
+      const cast = CAST[i];
+      if (!cast) continue;
+      const anim = idleAnim();
+      anim.walkPhase = this.walk[i] ?? 0;
+      anim.speed = dt > 0 ? moved / dt / HERO_SCALE : 0;
+      const since = time - (this.shotAt[i] ?? -9);
+      anim.recoilT = since < CHIBI_TIMING.recoil[cast.weapon] ? since / CHIBI_TIMING.recoil[cast.weapon] : -1;
+      if (cast.weapon === "lance") anim.charge = 0.5 + 0.5 * Math.sin(time * 2 + i);
+      ctx.save();
+      ctx.globalAlpha = 0.95 - this.calm * 0.78;
+      drawHero(ctx, { heroId: cast.hero, color: p.c.hex, x: p.x, y: p.y, aim, weapon: { id: cast.weapon, rarity: cast.rarity }, anim, scale: HERO_SCALE, time, seed: i * 7 });
+      ctx.restore();
+    }
   }
 }

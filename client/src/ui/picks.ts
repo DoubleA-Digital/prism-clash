@@ -4,7 +4,7 @@
 import { MATCH, PLAYER_COLORS, type PowerId, type UltId } from "@prism/shared";
 import { keyLabel, loadBinds, type Action } from "../input/input";
 import { session } from "../net/session";
-import { coreCanvas } from "./coreView";
+import { portraitCanvas } from "./heroPortrait";
 import { h, raw } from "./dom";
 import { reducedMotion, rem, tilt } from "./fx";
 import { iconDataUrl, powerInfo } from "./icons";
@@ -64,7 +64,7 @@ function pickScreen(cfg: PickCfg): Built {
 
   const pips = (session.room?.players ?? []).filter((p) => !p.bot).map((p) => {
     const st = h("span.st", null, "THINKING");
-    const pip = h("div.pip", { style: { "--c": colorOf(p.id) } }, coreCanvas(p.color, rem(1.5)), h("span", null, p.name), st);
+    const pip = h("div.pip", { style: { "--c": colorOf(p.id) } }, portraitCanvas(p.hero, colorOf(p.id), rem(1.9), "hero-mini sm"), h("span", null, p.name), st);
     return { id: p.id, pip, st };
   });
   const lockedRow = h("div.locked-row", null, pips.map((p) => p.pip));
