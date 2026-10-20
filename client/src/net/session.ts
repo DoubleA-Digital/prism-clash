@@ -8,7 +8,9 @@ import {
   type PlayerMatchStats, type PowerId, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { NetView } from "./netview";
-import { Connection, serverUrl } from "./socket";
+import { currentServer } from "./serverUrl";
+import { Connection } from "./socket";
+import { WorkerTransport, WsTransport, type Transport } from "./transport";
 
 export interface MatchEndInfo {
   winnerId: number;
@@ -24,6 +26,19 @@ export interface ShardOffer {
 }
 
 const TOKEN_KEY = "prism.session";
+/** Shown when an online room can't reach a game server (static deploys with no server, a server that's down). */
+export const OFFLINE_MESSAGE = "Online rooms need the game server — Practice vs Bots works right now";
+const WAKING_MESSAGE = "Connecting to the game server… a sleeping server can take up to a minute to wake.";
+/** Status messages shown in the menu's message line in the calm notice style rather than as errors. */
+export const isNotice = (msg: string | null) => msg === OFFLINE_MESSAGE || msg === WAKING_MESSAGE;
+/** Give up on a connection that never opens (a sleeping Render server wakes well inside this). */
+const CONNECT_TIMEOUT_MS = 70_000;
+const WAKING_AFTER_MS = 3_000;
+
+/** The practice server: the whole authoritative server in a Web Worker (see practice.worker.ts). */
+function practiceWorker(): Worker {
+  return new Worker(new URL("./practice.worker.ts", import.meta.url), { type: "module", name: "prism-practice" });
+}
 const NAME_KEY = "prism.name";
 const HERO_KEY = "prism.hero";
 
@@ -50,6 +65,8 @@ export class Session {
   rtt = 0;
   lastError: string | null = null;
   connected = false;
+  /** "local": Practice vs Bots in the in-browser worker; "online": a game server. */
+  mode: "online" | "local" = "online";
   version = 0;
   private listeners = new Set<() => void>();
   private eventListeners = new Set<(e: GameEvent, immediate: boolean) => void>();
@@ -58,6 +75,7 @@ export class Session {
   private unsent: InputFrame[] = [];
   private lastInputSend = 0;
   private pendingJoin: { create: boolean; testRoom: boolean; code: string } | null = null;
+  private connectTimers: number[] = [];
 
   constructor() {
     try {
@@ -85,22 +103,87 @@ export class Session {
     this.listeners.forEach((f) => f());
   }
 
+  private transport(): Transport {
+    return this.mode === "local" ? new WorkerTransport(practiceWorker) : new WsTransport(currentServer().url);
+  }
+
+  /** Switches between online and local practice, dropping the other connection. */
+  private useMode(mode: "online" | "local") {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (this.conn.kind) {
+      const old = this.conn;
+      this.conn = Object.assign(new Connection(), { sim: old.sim });
+      old.close();
+    }
+    this.connected = false;
+    this.myId = 0;
+  }
+
   connect() {
     if (this.conn.open) return;
-    this.conn = Object.assign(new Connection(), { sim: this.conn.sim });
-    this.conn.on((m) => this.onMessage(m));
-    this.conn.onOpen(() => {
+    // A connection still trying to open is replaced, not left running beside the new one.
+    if (this.conn.kind) this.conn.close();
+    const conn = Object.assign(new Connection(), { sim: this.conn.sim });
+    this.conn = conn;
+    this.myId = 0;
+    // Events from a connection we've since replaced are ignored.
+    conn.on((m) => {
+      if (conn === this.conn) this.onMessage(m);
+    });
+    conn.onOpen(() => {
+      if (conn !== this.conn) return;
+      this.clearConnectTimers();
+      if (this.lastError === WAKING_MESSAGE) this.lastError = null;
       this.connected = true;
-      this.conn.send({ type: C2S.hello, name: this.name || "Player", token: this.token, version: NET.version });
+      const token = this.mode === "online" ? this.token : null;
+      conn.send({ type: C2S.hello, name: this.name || "Player", token, version: NET.version });
       this.changed();
     });
-    this.conn.onClose(() => {
+    conn.onClose((reason, opened) => {
+      if (conn !== this.conn) return;
+      this.clearConnectTimers();
       this.connected = false;
       window.clearInterval(this.pingTimer);
+      if (!opened) {
+        // Never connected: no server here (static deploy) or it's down. Say so, kindly.
+        this.pendingJoin = null;
+        this.lastError = this.mode === "local" ? reason : OFFLINE_MESSAGE;
+        this.toMenu();
+      } else if (this.mode === "local") {
+        if (this.phase !== "menu") {
+          this.lastError = reason;
+          this.toMenu();
+        }
+      } else if (this.phase !== "menu") window.setTimeout(() => this.connect(), 1500);
       this.changed();
-      if (this.phase !== "menu") window.setTimeout(() => this.connect(), 1500);
     });
-    this.conn.connect(serverUrl());
+    if (this.mode === "online") {
+      this.connectTimers.push(
+        window.setTimeout(() => {
+          if (conn === this.conn && !conn.open && this.pendingJoin) {
+            this.lastError = WAKING_MESSAGE;
+            this.changed();
+          }
+        }, WAKING_AFTER_MS),
+        window.setTimeout(() => {
+          if (conn === this.conn && !conn.open) conn.close();
+        }, CONNECT_TIMEOUT_MS),
+      );
+    }
+    conn.connect(this.transport());
+  }
+
+  private clearConnectTimers() {
+    for (const t of this.connectTimers) window.clearTimeout(t);
+    this.connectTimers = [];
+  }
+
+  private toMenu() {
+    this.room = null;
+    this.phase = "menu";
+    this.view = null;
+    this.shard = null;
   }
 
   setName(n: string) {
@@ -125,12 +208,22 @@ export class Session {
 
   createRoom(testRoom = false) {
     this.lastError = null;
+    this.useMode("online");
+    this.pendingJoin = { create: true, testRoom, code: "" };
+    this.ensureHello();
+  }
+
+  /** Practice vs Bots: a room on the in-browser server (works offline, no game server needed). */
+  practice(testRoom = false) {
+    this.lastError = null;
+    this.useMode("local");
     this.pendingJoin = { create: true, testRoom, code: "" };
     this.ensureHello();
   }
 
   joinRoom(code: string) {
     this.lastError = null;
+    this.useMode("online");
     this.pendingJoin = { create: false, testRoom: false, code: code.toUpperCase() };
     this.ensureHello();
   }
@@ -150,9 +243,9 @@ export class Session {
 
   leave() {
     this.conn.send({ type: C2S.leave });
-    this.room = null;
-    this.phase = "menu";
-    this.view = null;
+    this.toMenu();
+    // Leaving practice shuts the local server down; the next practice starts a fresh one.
+    if (this.mode === "local") this.conn.close();
     this.changed();
   }
 
@@ -242,11 +335,14 @@ export class Session {
     switch (m.type) {
       case S2C.welcome:
         this.myId = m.playerId;
-        this.token = m.token;
-        try {
-          sessionStorage.setItem(TOKEN_KEY, m.token);
-        } catch {
-          /* storage blocked */
+        // Only online sessions can be rejoined; a practice token would overwrite the real one.
+        if (this.mode === "online") {
+          this.token = m.token;
+          try {
+            sessionStorage.setItem(TOKEN_KEY, m.token);
+          } catch {
+            /* storage blocked */
+          }
         }
         window.clearInterval(this.pingTimer);
         this.pingTimer = window.setInterval(() => this.conn.send({ type: C2S.ping, t: performance.now(), rtt: this.rtt }), NET.pingIntervalMs);

@@ -41,6 +41,9 @@ importers:
 
   client:
     dependencies:
+      '@prism/server':
+        specifier: workspace:*
+        version: link:../server
       '@prism/shared':
         specifier: workspace:*
         version: link:../shared

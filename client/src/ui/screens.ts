@@ -137,7 +137,8 @@ export class Screens {
             openHowTo: () => this.openModal(howToModal(() => this.closeModal(), this.game.input)),
             practice: () => {
               this.autoStart = true;
-              session.createRoom(new URLSearchParams(location.search).has("test"));
+              // Always the in-browser server: instant, and works with no game server (PLAN.md 12.10).
+              session.practice(new URLSearchParams(location.search).has("test"));
             },
           },
           this.game.input,

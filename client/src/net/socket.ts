@@ -1,9 +1,11 @@
-// The WebSocket connection, with a built-in network simulator (F2 panel) that adds
+// The connection to a game server (over a Transport: WebSocket or the local practice
+// worker), with a built-in network simulator (F2 panel) that adds
 // latency, jitter and packet loss to both directions so bad connections can be tested
 // on one machine. "Loss" drops whole hot messages (inputs/snapshots); TCP would otherwise
 // retransmit them, so this models a worse-than-real connection.
 
 import { C2S, decode, encode, S2C, type ClientMsg, type ServerMsg } from "@prism/shared";
+import type { Transport } from "./transport";
 
 export interface NetSim {
   latencyMs: number;
@@ -25,10 +27,10 @@ export interface NetStats {
 type Listener = (msg: ServerMsg) => void;
 
 export class Connection {
-  private ws: WebSocket | null = null;
+  private transport: Transport | null = null;
   private listeners = new Set<Listener>();
   private openListeners = new Set<() => void>();
-  private closeListeners = new Set<(reason: string) => void>();
+  private closeListeners = new Set<(reason: string, opened: boolean) => void>();
   sim: NetSim = { latencyMs: 0, jitterMs: 0, loss: 0 };
   stats: NetStats = { bytesIn: 0, bytesOut: 0, snapshots: 0, inPerSec: 0, outPerSec: 0, snapsPerSec: 0, dropped: 0 };
   private window = { in: 0, out: 0, snaps: 0, at: performance.now() };
@@ -37,48 +39,53 @@ export class Connection {
   private lastDeliverOut = 0;
   open = false;
 
-  connect(url: string) {
-    this.ws = new WebSocket(url);
-    this.ws.binaryType = "arraybuffer";
-    this.ws.onopen = () => {
-      this.open = true;
-      this.openListeners.forEach((f) => f());
-    };
-    this.ws.onclose = (e) => {
-      this.open = false;
-      this.closeListeners.forEach((f) => f(e.reason || "Connection closed"));
-    };
-    this.ws.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-      const bytes = new Uint8Array(e.data);
-      this.stats.bytesIn += bytes.length;
-      this.window.in += bytes.length;
-      let msg: ServerMsg;
-      try {
-        msg = decode<ServerMsg>(bytes);
-      } catch {
-        return;
-      }
-      if (msg.type === S2C.snapshot) {
-        this.stats.snapshots++;
-        this.window.snaps++;
-      }
-      const hot = msg.type === S2C.snapshot;
-      this.deliver(() => this.listeners.forEach((f) => f(msg)), hot, "in");
-    };
+  /** "ws" for an online server, "worker" for local practice, null before connect(). */
+  get kind(): Transport["kind"] | null {
+    return this.transport?.kind ?? null;
+  }
+
+  connect(transport: Transport) {
+    this.transport = transport;
+    transport.start({
+      open: () => {
+        this.open = true;
+        this.openListeners.forEach((f) => f());
+      },
+      close: (reason, opened) => {
+        this.open = false;
+        this.closeListeners.forEach((f) => f(reason, opened));
+      },
+      message: (bytes) => {
+        this.stats.bytesIn += bytes.length;
+        this.window.in += bytes.length;
+        let msg: ServerMsg;
+        try {
+          msg = decode<ServerMsg>(bytes);
+        } catch {
+          return;
+        }
+        if (msg.type === S2C.snapshot) {
+          this.stats.snapshots++;
+          this.window.snaps++;
+        }
+        const hot = msg.type === S2C.snapshot;
+        this.deliver(() => this.listeners.forEach((f) => f(msg)), hot, "in");
+      },
+    });
   }
 
   close() {
-    this.ws?.close();
+    this.transport?.close();
   }
 
   send(msg: ClientMsg) {
     const hot = msg.type === C2S.input;
     this.deliver(() => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      if (!this.transport?.open) return;
       const data = encode(msg);
       this.stats.bytesOut += data.length;
       this.window.out += data.length;
-      this.ws.send(data);
+      this.transport.send(data);
     }, hot, "out");
   }
 
@@ -121,14 +128,7 @@ export class Connection {
   onOpen(f: () => void) {
     this.openListeners.add(f);
   }
-  onClose(f: (reason: string) => void) {
+  onClose(f: (reason: string, opened: boolean) => void) {
     this.closeListeners.add(f);
   }
-}
-
-export function serverUrl(): string {
-  const override = import.meta.env.VITE_WS_URL as string | undefined;
-  if (override) return override;
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws`;
 }

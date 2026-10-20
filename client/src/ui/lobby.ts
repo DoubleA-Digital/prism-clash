@@ -4,6 +4,7 @@
 
 import { HEROES, HUMAN_COLORS, mapName, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, type Difficulty, type MapId, type RoomState } from "@prism/shared";
 import { audio } from "../audio/audio";
+import { currentServer, inviteUrl } from "../net/serverUrl";
 import { session } from "../net/session";
 import { coreCanvas } from "./coreView";
 import { h } from "./dom";
@@ -27,7 +28,8 @@ export function lobbyScreen(toast: (t: string) => void): Built {
   const render = (room: RoomState) => {
     const me = room.players.find((p) => p.id === session.myId);
     const host = room.hostId === session.myId;
-    const url = `${location.origin}${location.pathname}?room=${room.code}`;
+    const url = inviteUrl(`${location.origin}${location.pathname}`, room.code, currentServer().param);
+    const local = session.mode === "local";
     const copy = async (text: string, msg: string) => {
       try {
         await navigator.clipboard.writeText(text);
@@ -65,7 +67,7 @@ export function lobbyScreen(toast: (t: string) => void): Built {
           `div.slot.empty${fill ? ".bot" : ""}`,
           { style: { "--i": String(i) } },
           coreCanvas(next, rem(2.7), { ghost: true }),
-          [h("span.pulse-dot"), fill ? "Open seat: share the code (bots fill in)" : "Open seat: share the code"],
+          [h("span.pulse-dot"), local ? "Open seat (a bot fills in)" : fill ? "Open seat: share the code (bots fill in)" : "Open seat: share the code"],
         ),
       );
     }
@@ -104,19 +106,26 @@ export function lobbyScreen(toast: (t: string) => void): Built {
     const left = h(
       "div.lobby-main",
       null,
-      h(
-        "div.panel.code-panel",
-        null,
-        h("div.panel-title", null, "Room code"),
-        h("div.code-tiles", { title: "Click to copy the code", onclick: () => void copy(room.code, "Room code copied") }, code.map((ch, i) => h("div.code-tile", { style: { "--i": String(i) } }, ch))),
-        h(
-          "div.share-row",
+      local
+        ? h(
+          "div.panel.code-panel",
           null,
-          h("input.field", { value: url, readonly: true, "aria-label": "Invite link", onfocus: (e: Event) => (e.target as HTMLInputElement).select() }),
-          h("button.btn.small", { onclick: () => void copy(url, "Invite link copied"), "data-nav": "1" }, "Copy invite link"),
+          h("div.panel-title", null, "Practice"),
+          h("div.share-hint", null, "This match runs right here in your browser against bots, no server needed. To play with friends, go back and create an online room."),
+        )
+        : h(
+          "div.panel.code-panel",
+          null,
+          h("div.panel-title", null, "Room code"),
+          h("div.code-tiles", { title: "Click to copy the code", onclick: () => void copy(room.code, "Room code copied") }, code.map((ch, i) => h("div.code-tile", { style: { "--i": String(i) } }, ch))),
+          h(
+            "div.share-row",
+            null,
+            h("input.field", { value: url, readonly: true, "aria-label": "Invite link", onfocus: (e: Event) => (e.target as HTMLInputElement).select() }),
+            h("button.btn.small", { onclick: () => void copy(url, "Invite link copied"), "data-nav": "1" }, "Copy invite link"),
+          ),
+          h("div.share-hint", null, "Friends open this link to jump straight into your room."),
         ),
-        h("div.share-hint", null, "Friends open this link to jump straight into your room."),
-      ),
       h("div.panel.roster", null, h("div.panel-title", null, "Players", h("span.count", null, `${humans.length}/${NET.maxPlayers}`)), h("div.slots", null, slots)),
     );
 

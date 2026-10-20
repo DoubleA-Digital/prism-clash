@@ -7,5 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: { "/ws": { target: "ws://localhost:8787", ws: true }, "/healthz": "http://localhost:8787" },
   },
+  // The practice server (src/net/practice.worker.ts) is a module worker with its own bundle.
+  worker: { format: "es" },
   build: { target: "es2022", outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 900 },
 });

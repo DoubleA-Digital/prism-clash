@@ -84,6 +84,8 @@ input { font: inherit; color: inherit; }
 .field.code { text-transform: uppercase; letter-spacing: 0.4em; text-align: center; }
 .label { font-family: var(--ui); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--dim); }
 .error { color: var(--danger); font-weight: 700; text-align: center; min-height: 1.4rem; font-size: 1.05rem; }
+/* Not a mistake, just how things are (no game server here): calm gold, not alarm red. */
+.error.notice { color: var(--gold); font-weight: 600; text-shadow: 0 0 1.2rem rgba(255, 200, 61, 0.35); }
 .hint { color: var(--dim); font-size: 1rem; text-align: center; font-weight: 500; }
 .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 1.7rem; height: 1.7rem; padding: 0 0.45rem; font-family: var(--mono); font-size: 0.78rem; font-weight: 800; border-radius: 0.45rem; background: linear-gradient(180deg, #fff, #cfd4ff); color: #0a0820; box-shadow: 0 0.14rem 0 #6a6fa8, inset 0 -0.1rem 0 rgba(0, 0, 0, 0.1); margin: 0 0.15rem; }
 .kbd.wide { min-width: 5.5rem; }

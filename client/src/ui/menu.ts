@@ -1,7 +1,7 @@
 // Title screen + main menu: name, Create room, Join (code), Practice vs bots, Settings and
 // How to Play. Keyboard (arrows/Enter) and gamepad (D-pad/A) navigable, mouse parallax on the logo.
 
-import { session } from "../net/session";
+import { isNotice, session } from "../net/session";
 import { h, raw } from "./dom";
 import { keyLabel, type Input } from "../input/input";
 import type { Built } from "./types";
@@ -48,12 +48,13 @@ export function menuScreen(actions: MenuActions, input: Input): Built {
   const inviteCode = (params.get("room") ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
   const name = h("input.field", { placeholder: "YOUR NAME", maxlength: "16", value: session.name, autocomplete: "off", spellcheck: "false", "aria-label": "Your name" }) as HTMLInputElement;
   const code = h("input.field.code", { placeholder: "CODE", maxlength: "5", value: inviteCode, autocomplete: "off", spellcheck: "false", "aria-label": "Room code" }) as HTMLInputElement;
-  const error = h("div.error.m-item", { style: { "--i": "8" }, role: "alert" }, session.lastError ?? "");
+  const error = h(`div.error.m-item${isNotice(session.lastError) ? ".notice" : ""}`, { style: { "--i": "8" }, role: "alert" }, session.lastError ?? "");
 
   const needName = () => {
     const n = sanitize(name.value.trim());
     if (!n) {
       error.textContent = "Pick a name first.";
+      error.classList.remove("notice");
       name.focus();
       name.animate([{ transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "none" }], { duration: 220, iterations: 2 });
       return null;
@@ -69,6 +70,7 @@ export function menuScreen(actions: MenuActions, input: Input): Built {
     const c = code.value.toUpperCase().replace(/[^A-Z]/g, "");
     if (c.length !== 5) {
       error.textContent = "Room codes are 5 letters.";
+      error.classList.remove("notice");
       code.focus();
       return;
     }
@@ -141,6 +143,7 @@ export function menuScreen(actions: MenuActions, input: Input): Built {
     el: screen,
     update: () => {
       if (error.textContent !== (session.lastError ?? "")) error.textContent = session.lastError ?? "";
+      error.classList.toggle("notice", isNotice(session.lastError));
     },
   };
 }
