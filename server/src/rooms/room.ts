@@ -23,7 +23,8 @@ export class Room {
   readonly code: string;
   members = new Map<number, Member>();
   hostId = 0;
-  settings: RoomSettings = { fillBots: true, botDifficulty: "normal", map: "auto", testRoom: false };
+  // Online rooms start humans-only (any 2+ can play); the host can turn bots on. Practice turns them on itself.
+  settings: RoomSettings = { fillBots: false, botDifficulty: "normal", map: "auto", testRoom: false };
   phase: Phase = "lobby";
   /** Room tick (runs in every phase). */
   tick = 0;

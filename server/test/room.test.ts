@@ -11,8 +11,10 @@ const fakeWs = () => {
 };
 
 const rooms: Room[] = [];
-const mkRoom = () => {
+// Most tests here exercise the bot-filled drop, so they turn fill on (online rooms default to off).
+const mkRoom = (fillBots = true) => {
   const r = new Room("ABCDE", 123, false, { loop: false });
+  r.settings.fillBots = fillBots;
   rooms.push(r);
   return r;
 };
@@ -40,6 +42,17 @@ describe("room", () => {
     expect(NET.maxPlayers).toBe(10);
     expect(r.addHuman(99, "Late", "t99", fakeWs().ws, "ip")).toBeNull();
     expect(new Set([...r.members.values()].map((m) => m.color)).size).toBe(NET.maxPlayers);
+  });
+
+  test("online rooms default to humans only: four friends play a four-fighter match", () => {
+    expect(new Room("FGHIJ", 1, false, { loop: false }).settings.fillBots).toBe(false);
+    const r = mkRoom(false);
+    const ms = ["Ann", "Bea", "Cal", "Dee"].map((n, i) => r.addHuman(i + 1, n, `t${i}`, fakeWs().ws, "ip")!);
+    for (const m of ms.slice(1)) r.handle(m, { type: C2S.lobbySet, ready: true });
+    r.handle(ms[0], { type: C2S.start });
+    expect(r.phase).toBe("ultSelect");
+    expect(r.members.size).toBe(4);
+    expect([...r.members.values()].some((m) => m.bot)).toBe(false);
   });
 
   test("bots fill the room and the match starts", () => {
