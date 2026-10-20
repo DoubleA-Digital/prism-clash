@@ -3,7 +3,7 @@
 // Echo Storm buff rule and mid-match Prism Shard equips.
 import { describe, expect, test } from "vitest";
 import {
-  BTN, equipPower, GUN, PF, POWERS, PROJ, ULTIMATES, weaponDamage, WEAPONS,
+  BTN, equipPower, GUN, PF, PLAYER, POWERS, PROJ, ULTIMATES, weaponDamage, WEAPONS,
 } from "@prism/shared";
 import { kit, ticks } from "./powerkit";
 
@@ -65,7 +65,7 @@ describe("Magnetar with any gun", () => {
     const held = k.w.projectiles.filter((p) => (p.flags & PF.captured) !== 0);
     expect(held.filter((p) => p.weapon === "shotgun").length).toBeGreaterThanOrEqual(WEAPONS.shotgun.pellets - 1);
     expect(held).toContain(rocket);
-    expect(k.caster.hp).toBe(100);
+    expect(k.caster.hp).toBe(PLAYER.maxHp);
     k.act({ pressed: BTN.p1 });
     for (const pr of held) {
       expect(pr.owner).toBe(1);
@@ -114,7 +114,7 @@ describe("Void Cloak with any weapon", () => {
     const hit = k.events.find((e) => e.t === "hit" && e.target === 2);
     expect(hit).toMatchObject({ crit: true, source: "lance" });
     const L = WEAPONS.lance;
-    expect(100 - k.enemies[0]!.hp).toBeCloseTo(weaponDamage({ id: "lance", rarity: 0 }) * (L.minCharge + (1 - L.minCharge) * charge) * GUN.critMult, 0);
+    expect(PLAYER.maxHp - k.enemies[0]!.hp).toBeCloseTo(weaponDamage({ id: "lance", rarity: 0 }) * (L.minCharge + (1 - L.minCharge) * charge) * GUN.critMult, 0);
     expect(k.caster.status.cloaked ?? 0).toBe(0);
   });
 
@@ -123,7 +123,7 @@ describe("Void Cloak with any weapon", () => {
     k.give(k.caster, "blade");
     k.cast();
     k.act({ buttons: BTN.shoot, aim: 0 });
-    expect(100 - k.enemies[0]!.hp).toBeCloseTo(weaponDamage({ id: "blade", rarity: 0 }) * GUN.critMult, 0);
+    expect(PLAYER.maxHp - k.enemies[0]!.hp).toBeCloseTo(weaponDamage({ id: "blade", rarity: 0 }) * GUN.critMult, 0);
   });
 });
 

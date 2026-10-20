@@ -103,12 +103,12 @@ describe("guns", () => {
     near.run(1, near.mine({ buttons: BTN.shoot, aim: 0 }));
     expect(near.w.projectiles.filter((p) => p.owner === 1).length).toBe(WEAPONS.shotgun.pellets);
     near.run(3);
-    const close = 100 - near.enemies[0]!.hp;
+    const close = PLAYER.maxHp - near.enemies[0]!.hp;
     const far = setup([[380, 0]]);
     far.give("shotgun");
     far.run(1, far.mine({ buttons: BTN.shoot, aim: 0 }));
     far.run(12);
-    const lost = 100 - far.enemies[0]!.hp;
+    const lost = PLAYER.maxHp - far.enemies[0]!.hp;
     expect(close).toBeGreaterThan(55);
     expect(lost).toBeLessThan(close * 0.6);
   });
@@ -119,9 +119,9 @@ describe("guns", () => {
     s.run(1, s.mine({ buttons: BTN.shoot, aim: 0 }));
     s.run(10);
     const [a, b, c] = s.enemies as [Player, Player, Player];
-    expect(a.hp).toBeLessThan(100);
-    expect(b.hp).toBeLessThan(100);
-    expect(c.hp).toBe(100);
+    expect(a.hp).toBeLessThan(PLAYER.maxHp);
+    expect(b.hp).toBeLessThan(PLAYER.maxHp);
+    expect(c.hp).toBe(PLAYER.maxHp);
   });
 
   test("rocket: splash damage, knockback, and it breaks crates", () => {
@@ -131,7 +131,7 @@ describe("guns", () => {
     s.run(1, s.mine({ buttons: BTN.shoot, aim: 0 }));
     s.run(ticks(1));
     expect(crate.dead).toBe(true);
-    expect(s.enemies[0]!.hp).toBeLessThan(100);
+    expect(s.enemies[0]!.hp).toBeLessThan(PLAYER.maxHp);
     expect(s.events.some((e) => e.t === "explode" && e.source === "rocket")).toBe(true);
     // The crate dropped loot.
     expect(s.w.loot.size).toBeGreaterThan(0);
@@ -156,7 +156,7 @@ describe("guns", () => {
     s.give("blade");
     const [front, shooter] = s.enemies as [Player, Player];
     s.run(1, s.mine({ buttons: BTN.shoot, aim: 0 }));
-    expect(front.hp).toBeLessThan(100);
+    expect(front.hp).toBeLessThan(PLAYER.maxHp);
     expect(s.me.px).toBeGreaterThan(0);
     s.me.aim = Math.PI;
     s.me.swingT = 0.3;
@@ -171,7 +171,7 @@ describe("guns", () => {
 describe("healing and armor", () => {
   test("hold to heal; shooting interrupts; movement is slowed while healing", () => {
     const s = setup();
-    s.me.hp = 40;
+    s.me.hp = PLAYER.maxHp - ITEMS.medkit.heal;
     s.me.inv.bandages = 2;
     s.me.inv.medkits = 1;
     s.run(1, s.mine({ buttons: BTN.heal }));
@@ -179,10 +179,10 @@ describe("healing and armor", () => {
     s.run(1, s.mine({ buttons: BTN.heal | BTN.shoot }));
     expect(s.me.healKind).toBeNull();
     s.run(ticks(ITEMS.medkit.time) + 2, s.mine({ buttons: BTN.heal }));
-    expect(s.me.hp).toBe(100);
+    expect(s.me.hp).toBe(PLAYER.maxHp);
     expect(s.me.inv.medkits).toBe(0);
     // Slowed while healing.
-    s.me.hp = 70;
+    s.me.hp = PLAYER.maxHp * 0.7;
     const x0 = s.me.x;
     s.run(15, s.mine({ buttons: BTN.heal, mx: 1 }));
     expect(s.me.x - x0).toBeLessThan(PLAYER.speed * 0.5 * 0.6);
@@ -192,12 +192,12 @@ describe("healing and armor", () => {
     const s = setup([[200, 0]]);
     s.me.armor = 30;
     s.w.damage(s.me, 20, 2, "pistol");
-    expect([s.me.armor, s.me.hp]).toEqual([10, 100]);
+    expect([s.me.armor, s.me.hp]).toEqual([10, PLAYER.maxHp]);
     s.w.damage(s.me, 20, 2, "pistol");
-    expect([s.me.armor, s.me.hp]).toEqual([0, 90]);
+    expect([s.me.armor, s.me.hp]).toEqual([0, PLAYER.maxHp - 10]);
     s.me.armor = 50;
     s.w.damage(s.me, 5, 0, "zone", { pierce: true });
-    expect([s.me.armor, s.me.hp]).toEqual([50, 85]);
+    expect([s.me.armor, s.me.hp]).toEqual([50, PLAYER.maxHp - 15]);
   });
 });
 
@@ -345,7 +345,7 @@ describe("destructibles and throwables", () => {
     s.run(1, s.mine({ pressed: BTN.throw, aim: 0 }));
     s.run(ticks(ITEMS.throwables.frag.fuse) + 2);
     expect(s.events.some((e) => e.t === "explode" && e.source === "frag")).toBe(true);
-    expect(s.enemies[0]!.hp).toBeLessThan(100);
+    expect(s.enemies[0]!.hp).toBeLessThan(PLAYER.maxHp);
     s.me.inv.throwable = "smoke";
     s.me.inv.throws = 1;
     s.run(1, s.mine({ pressed: BTN.throw, aim: -Math.PI / 2 }));

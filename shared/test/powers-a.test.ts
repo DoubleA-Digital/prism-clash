@@ -59,10 +59,10 @@ describe("Chrono Rewind", () => {
     s.w.damage(caster, 30, 2, "pistol");
     s.run(20, (_i, p) => (p.id === 1 ? { mx: 1 } : undefined));
     expect(caster.x - start.x).toBeGreaterThan(600);
-    expect(caster.hp).toBeCloseTo(70, 0);
+    expect(caster.hp).toBeCloseTo(PLAYER.maxHp - 30, 0);
     s.cast();
     expect(Math.hypot(caster.x - start.x, caster.y - start.y)).toBeLessThan(120);
-    expect(caster.hp).toBeCloseTo(100, 0);
+    expect(caster.hp).toBeCloseTo(PLAYER.maxHp, 0);
     expect(caster.warp).toBeGreaterThan(0);
     expect(caster.status.invulnerable ?? 0).toBeGreaterThan(0);
     const trail = s.fx("rewindTrail");
@@ -75,7 +75,7 @@ describe("Chrono Rewind", () => {
     s.w.damage(s.caster, 30, 2, "pistol");
     s.run(84);
     s.cast();
-    expect(s.caster.hp).toBeLessThanOrEqual(70.5);
+    expect(s.caster.hp).toBeLessThanOrEqual(PLAYER.maxHp - 29.5);
   });
 });
 

@@ -247,7 +247,7 @@ export class NetView {
 
   private blankMe(): Player {
     return {
-      id: this.myId, kind: "player", name: "", color: 0, bot: false, x: 0, y: 0, vx: 0, vy: 0, px: 0, py: 0, r: PLAYER.radius, aim: 0, hp: 100, armor: 0, alive: true,
+      id: this.myId, kind: "player", name: "", color: 0, bot: false, x: 0, y: 0, vx: 0, vy: 0, px: 0, py: 0, r: PLAYER.radius, aim: 0, hp: PLAYER.maxHp, armor: 0, alive: true,
       connected: true, dashT: 0, dashCd: 0, dashX: 0, dashY: 0, inv: newInventory(), fireCd: 0, reloadT: 0, bloom: 0, charge: 0, swingT: 0, throwCd: 0,
       healKind: null, healT: 0, sinceDamage: 0, sinceShot: 0, slots: [], ult: null, status: {}, lastHitBy: 0, lastHitSource: "pistol", lastHitTick: 0,
       warp: 0, ackSeq: 0, absorbed: 0, cloakCrit: false, damagedAt: 0, damagedBy: 0,

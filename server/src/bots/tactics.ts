@@ -2,7 +2,7 @@
 // target by the projectile's travel time), and when to recast. Bots stay beatable through
 // reaction delay and aim error (applied by the brain), not by playing dumb with powers.
 
-import { POWERS, ULTIMATES, type Player, type PowerId, type UltId, type World } from "@prism/shared";
+import { PLAYER, POWERS, ULTIMATES, type Player, type PowerId, type UltId, type World } from "@prism/shared";
 
 export interface CastPlan {
   /** 0, 1 = power slots, 3 = ultimate. */
@@ -28,6 +28,8 @@ export interface TacticsContext {
 }
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+/** Health as a percent of full (the tactic thresholds below are written in percent). */
+const pctHp = (p: Player) => (p.hp / PLAYER.maxHp) * 100;
 
 /** Aim that leads a moving target for a projectile of the given speed. */
 export function leadAim(me: Player, t: Player, speed: number): number {
@@ -50,7 +52,7 @@ function los(c: TacticsContext, t: Player) {
 function powerPlan(c: TacticsContext, id: PowerId): number | null | false {
   const { me, target: t, w } = c;
   const d = t ? dist(me, t) : Infinity;
-  const hp = me.hp;
+  const hp = pctHp(me);
   const fighting = !!t && d < 700;
   switch (id) {
     case "singularity":
@@ -106,12 +108,12 @@ function recastWanted(c: TacticsContext, id: PowerId, slotAge: number): number |
   switch (id) {
     case "portalPair":
       // Blue portal once we've moved away; escape route is set.
-      return slotAge > 1.2 && (me.hp < 50 || c.rand() < 0.08) ? null : false;
+      return slotAge > 1.2 && (pctHp(me) < 50 || c.rand() < 0.08) ? null : false;
     case "mirrorSelf": {
       // Swap with the clone when it's safer (farther from the target) and we're hurt.
       const clone = [...c.w.effects.values()].find((e) => e.kind === "clone" && e.owner === me.id && !e.dead);
       if (!clone || !t) return false;
-      return me.hp < 45 && dist(clone, t) > dist(me, t) + 120 ? null : false;
+      return pctHp(me) < 45 && dist(clone, t) > dist(me, t) + 120 ? null : false;
     }
     case "magnetar": {
       const field = [...c.w.effects.values()].find((e) => e.kind === "magnet" && e.owner === me.id && !e.dead);
@@ -137,7 +139,7 @@ function ultPlan(c: TacticsContext, id: UltId): number | null | false {
     case "echoStorm":
       return me.slots.some((s) => s && s.cd <= 0) && t && d < 650 ? null : false;
     case "finalStand":
-      return (me.hp < 45 && near >= 1) || near >= 2 ? null : false;
+      return (pctHp(me) < 45 && near >= 1) || near >= 2 ? null : false;
     case "huntersEye":
       return (t && d < 700) || near === 0 ? null : false;
     default:

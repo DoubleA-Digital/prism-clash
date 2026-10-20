@@ -50,7 +50,9 @@ export const HUMAN_COLORS = PLAYER_COLORS.length;
 
 export const PLAYER = {
   radius: 22,
-  maxHp: 100,
+  /** 150 so no single normal hit kills from full health (a Legendary sniper hit is 109, a
+   *  point-blank Legendary shotgun about 120). A cloak-crit snipe still can. */
+  maxHp: 150,
   speed: 330,
   /** How quickly velocity reaches the target (per second). High = snappy. */
   accel: 16,
@@ -144,8 +146,9 @@ export const THROWABLE_IDS = ["frag", "smoke", "mine"] as const;
 export type ThrowableKey = (typeof THROWABLE_IDS)[number];
 
 export const ITEMS = {
-  bandage: { heal: 15, time: 2, max: 10, name: "Bandage" },
-  medkit: { heal: 60, time: 5, max: 3, name: "Medkit" },
+  /** Heal amounts scale with PLAYER.maxHp (they were 15 and 60 of 100). */
+  bandage: { heal: 22, time: 2, max: 10, name: "Bandage" },
+  medkit: { heal: 90, time: 5, max: 3, name: "Medkit" },
   shield: { amount: 25, max: 50, name: "Shield Cell" },
   /** Movement speed while healing. */
   healMoveMult: 0.5,
@@ -267,10 +270,12 @@ export const INTEREST = {
 
 /** v2 retune: guns are the main damage source now. A typical fighter who reaches the mid game
  *  deals ~280 and takes ~200 (armor and heals included) over a 6-8 minute match:
- *  280 × 0.5 + 200 × 0.3 = 200 charge = about two ultimates. Winners get four or five. */
+ *  280 × 0.5 + 200 × 0.3 = 200 charge = about two ultimates. Winners get four or five.
+ *  At 150 HP there is half again as much damage to deal per kill (and fights last longer), so
+ *  both rates dropped by 30% to keep ultimates per match where they were at 100 HP. */
 export const ULT_CHARGE = {
-  perDamageDealt: 0.5,
-  perDamageTaken: 0.3,
+  perDamageDealt: 0.35,
+  perDamageTaken: 0.21,
   max: 100,
 } as const;
 
@@ -418,9 +423,9 @@ export const BOTS = {
    * one blob. Multipliers on the difficulty numbers, plus their own heal threshold.
    */
   personalities: {
-    aggressive: { weight: 3, aggression: 1.35, caution: 0.6, loot: 0.85, range: 0.85, rotateEarly: 1.1, ambush: 0.3, healBelow: 42, supply: 1.35, thirdParty: 1.4 },
-    cautious: { weight: 3, aggression: 0.72, caution: 1.4, loot: 1, range: 1.15, rotateEarly: 1.6, ambush: 1.4, healBelow: 70, supply: 0.7, thirdParty: 0.75 },
-    looter: { weight: 3, aggression: 0.9, caution: 1, loot: 1.5, range: 1, rotateEarly: 1.3, ambush: 0.7, healBelow: 58, supply: 1.1, thirdParty: 1 },
+    aggressive: { weight: 3, aggression: 1.35, caution: 0.6, loot: 0.85, range: 0.85, rotateEarly: 1.1, ambush: 0.3, healBelow: 63, supply: 1.35, thirdParty: 1.4 },
+    cautious: { weight: 3, aggression: 0.72, caution: 1.4, loot: 1, range: 1.15, rotateEarly: 1.6, ambush: 1.4, healBelow: 105, supply: 0.7, thirdParty: 0.75 },
+    looter: { weight: 3, aggression: 0.9, caution: 1, loot: 1.5, range: 1, rotateEarly: 1.3, ambush: 0.7, healBelow: 87, supply: 1.1, thirdParty: 1 },
   },
   /** Each personality number is scaled by a random factor in 1 ± this. */
   personalityJitter: 0.12,
@@ -465,7 +470,7 @@ export const BOTS = {
     coverSamples: 12,
     coverHold: [0.6, 1.6],
     /** Damage taken within 1.5 s that makes a bot break line of sight. */
-    burstDamage: 28,
+    burstDamage: 42,
     pursueSeconds: 3.5,
     /** Someone this close (or inside our gun's range, if shorter) is a fight whether we like it or not. */
     engageRange: 440,
@@ -486,15 +491,15 @@ export const BOTS = {
   /** Give up on a loot item / crate after chasing it this long, and ignore it for `ignore` s. */
   goalTimeout: { loot: 12, crate: 10, ignore: 30, noProgress: 4 },
   /** Default heal threshold (personalities override it). */
-  healBelow: 55,
+  healBelow: 82,
   /** Quiet time (no enemy seen, heard close or felt) needed before committing to a heal. */
   medkitQuietSeconds: 3.5,
   bandageQuietSeconds: 1.5,
   /** Zone rotation: aim this far inside the next circle; ETA is padded by etaSlack. */
   zone: { inset: 0.55, etaSlack: 1.35, edgeMargin: 140 },
-  supply: { range: 1900, minHealth: 70 },
+  supply: { range: 1900, minHealth: 105 },
   ambush: { seconds: [6, 14], cooldown: 22, search: 420 },
-  investigate: { memory: 3.5, minHealth: 60, stopShort: 320, range: 1700 },
+  investigate: { memory: 3.5, minHealth: 90, stopShort: 320, range: 1700 },
   /** Utility weights: each state's score from the situation (see server/src/bots/utility.ts). */
   utility: {
     roam: 0.18,
@@ -503,7 +508,7 @@ export const BOTS = {
       aggressionPow: 0.7, base: 0.4, win: 0.6, closeRange: 350, closeBonus: 0.25, chaseBase: 0.2, chaseWin: 0.45,
       losing: 0.45, unengagedBase: 0.3, unfavored: 0.6,
     },
-    flee: { lowHealth: 60, hurt: 1.1, healthy: 0.65, scale: 0.75, unseen: 0.55 },
+    flee: { lowHealth: 90, hurt: 1.1, healthy: 0.65, scale: 0.75, unseen: 0.55 },
     heal: { base: 0.55, missing: 0.6, noisy: 0.35, threatRange: 600, threatened: 0.3 },
     loot: { cap: 0.85, valueScale: 7, falloff: 700, unarmedBonus: 0.15 },
     crate: { unarmed: 0.35, base: 0.12 },
@@ -542,4 +547,6 @@ export const FX = {
   fireRevealSeconds: 1.4,
   /** How dark the area outside your line of sight is. */
   shadowAlpha: 0.62,
+  /** The HUD health bar gets a segment tick every this much health. */
+  hpSegment: 50,
 } as const;

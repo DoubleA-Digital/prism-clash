@@ -6,7 +6,7 @@
 
 import type { WebSocket } from "ws";
 import {
-  applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
+  applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
   type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type MatchProgress, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { createBrain, prepareBots, type BotBrain } from "../bots/brain";
@@ -547,7 +547,7 @@ export class Room {
     } else if (g === "die") {
       w.kill(p);
     } else if (g === "heal") {
-      p.hp = 100;
+      p.hp = PLAYER.maxHp;
     } else if (g === "loadout") {
       debugLoadout(p);
     } else if (g === "shard") {

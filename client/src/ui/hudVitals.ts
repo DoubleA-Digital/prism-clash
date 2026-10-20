@@ -2,7 +2,7 @@
 // armor, heal and grenade counts, dash readiness, the power slots with radial cooldown
 // sweeps, and the ultimate meter.
 
-import { ITEMS, PLAYER, powerDef, type LootKind, type PowerId, type UltId } from "@prism/shared";
+import { FX, ITEMS, PLAYER, powerDef, type LootKind, type PowerId, type UltId } from "@prism/shared";
 import { drawShapeMarker } from "../render/core";
 import { withAlpha } from "../render/glow";
 import { itemIcon } from "../render/items";
@@ -19,15 +19,15 @@ interface SlotState {
 }
 
 export class Vitals {
-  private shownHp = 100;
-  private lagHp = 100;
+  private shownHp: number = PLAYER.maxHp;
+  private lagHp: number = PLAYER.maxHp;
   private slotState: SlotState[] = [];
   private ultWasReady = false;
   private ultFlash = 0;
 
   reset() {
-    this.shownHp = 100;
-    this.lagHp = 100;
+    this.shownHp = PLAYER.maxHp;
+    this.lagHp = PLAYER.maxHp;
     this.slotState = [];
     this.ultWasReady = false;
     this.ultFlash = 0;
@@ -117,10 +117,12 @@ export class Vitals {
     }
     ctx.strokeStyle = "rgba(5,4,13,0.55)";
     ctx.lineWidth = 2 * u;
-    for (let i = 1; i < 4; i++) {
+    // A segment tick every FX.hpSegment health (three segments at 150 HP).
+    const segs = Math.max(1, Math.round(PLAYER.maxHp / FX.hpSegment));
+    for (let i = 1; i < segs; i++) {
       ctx.beginPath();
-      ctx.moveTo(x + (w * i) / 4, by);
-      ctx.lineTo(x + (w * i) / 4, by + bh);
+      ctx.moveTo(x + (w * i) / segs, by);
+      ctx.lineTo(x + (w * i) / segs, by + bh);
       ctx.stroke();
     }
     ctx.restore();
