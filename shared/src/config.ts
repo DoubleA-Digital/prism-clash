@@ -172,10 +172,15 @@ export const LOOT = {
     building: { items: { weapon: 40, ammo: 18, bandage: 12, medkit: 7, shield: 12, throwable: 10, shard: 1.4 }, rarity: [48, 35, 14, 3] },
     crate: { items: { weapon: 36, ammo: 20, bandage: 12, medkit: 7, shield: 13, throwable: 10, shard: 2 }, rarity: [38, 38, 19, 5] },
   },
-  /** Items rolled per crate. */
-  crateRolls: 2,
-  /** Chance each loot spot is filled at match start. */
-  spotFill: 0.85,
+  /** Items rolled per crate: crateRolls, plus one more with crateBonusChance (1.7 on average;
+   *  it was a flat 2). */
+  crateRolls: 1,
+  crateBonusChance: 0.7,
+  /** Chance each loot spot is filled at match start (was 0.85: about 22% less floor loot). */
+  spotFill: 0.66,
+  /** An ammo box, heal, shield cell or grenade dropped this close to a pile of the same thing
+   *  joins that pile (one item with a count) instead of adding clutter. */
+  stackRadius: 70,
 } as const;
 
 export const SUPPLY = {

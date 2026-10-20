@@ -3,10 +3,10 @@
 // barrel chains, throwables, supply drops and the zone.
 import { describe, expect, test } from "vitest";
 import {
-  actFrame, addSolid, BTN, ITEMS, magSize, newWeapon, PLAYER, RARITY, SUPPLY, weaponDamage, WEAPONS, World, ZONE,
+  actFrame, addSolid, BTN, ITEMS, LOOT, magSize, MATCH, newWeapon, PLAYER, RARITY, SUPPLY, weaponDamage, WEAPONS, World, ZONE,
   type GameEvent, type InputFrame, type Player, type WeaponId,
 } from "@prism/shared";
-import { createLoot } from "../src/sim/loot";
+import { createLoot, dropFromCrate } from "../src/sim/loot";
 
 const DT = 1 / 30;
 let seq = 0;
@@ -211,10 +211,56 @@ describe("loot", () => {
     s.run(1);
     expect(s.me.inv.weapons[1]!.reserve).toBeGreaterThan(reserve);
     expect(s.me.inv.bandages).toBe(2);
-    expect(s.me.inv.medkits).toBe(1);
-    expect(s.me.armor).toBe(ITEMS.shield.amount);
+    // Piles hand over their whole count (two medkits, two shield cells up to the armor cap).
+    expect(s.me.inv.medkits).toBe(2);
+    expect(s.me.armor).toBe(Math.min(ITEMS.shield.max, ITEMS.shield.amount * 2));
     expect([s.me.inv.throwable, s.me.inv.throws]).toEqual(["frag", 2]);
     expect(s.w.loot.size).toBe(0);
+  });
+
+  test("drops of the same item in one spot stack into a single pile with a count", () => {
+    const s = setup();
+    s.me.x = -600;
+    const a = createLoot(s.w, { kind: "ammo", x: 200, y: 0 });
+    const b = createLoot(s.w, { kind: "ammo", x: 200 + LOOT.stackRadius * 0.6, y: 0 });
+    expect(b).toBe(a);
+    expect(a.count).toBe(2);
+    // Different kinds, other grenade types and far-away drops stay separate; weapons never stack.
+    createLoot(s.w, { kind: "medkit", x: 200, y: 0 });
+    createLoot(s.w, { kind: "throwable", x: 200, y: 0, throwable: "frag" });
+    createLoot(s.w, { kind: "throwable", x: 200, y: 0, throwable: "smoke" });
+    createLoot(s.w, { kind: "throwable", x: 210, y: 0, throwable: "frag", count: 2 });
+    createLoot(s.w, { kind: "ammo", x: 200 + LOOT.stackRadius * 2, y: 0 });
+    createLoot(s.w, { kind: "weapon", x: 200, y: 0, weapon: "smg" });
+    createLoot(s.w, { kind: "weapon", x: 200, y: 0, weapon: "smg" });
+    expect(s.w.loot.size).toBe(7);
+    expect([...s.w.loot.values()].find((l) => l.kind === "throwable" && l.throwable === "frag")?.count).toBe(3);
+    // A stacked ammo pile is worth its count in ammo boxes.
+    s.me.inv.weapons[1] = newWeapon("rifle", 0);
+    const reserve = s.me.inv.weapons[1].reserve;
+    s.me.x = 200;
+    s.run(1);
+    expect(s.me.inv.weapons[1]!.reserve - reserve).toBe(Math.round(magSize(s.me.inv.weapons[1]!) * ITEMS.ammoMags * 2));
+  });
+
+  test("a medkit pile bigger than your pouch keeps the rest on the floor", () => {
+    const s = setup();
+    s.me.inv.medkits = ITEMS.medkit.max - 1;
+    const l = createLoot(s.w, { kind: "medkit", x: 10, y: 0, count: 3 });
+    s.run(1);
+    expect(s.me.inv.medkits).toBe(ITEMS.medkit.max);
+    expect(l.dead).toBe(false);
+    expect(l.count).toBe(2);
+  });
+
+  test("crates drop one or two items", () => {
+    const counts = new Set<number>();
+    for (let seed = 1; seed <= 30; seed++) {
+      const w = new World("testYard", seed, { loot: false });
+      dropFromCrate(w, 0, 0);
+      counts.add(w.loot.size);
+    }
+    expect([...counts].sort()).toEqual([LOOT.crateRolls, LOOT.crateRolls + 1]);
   });
 
   test("F swaps the gun in hand when both slots are full, dropping the old one", () => {
@@ -236,9 +282,12 @@ describe("loot", () => {
     s.me.inv.bandages = 4;
     s.me.inv.throwable = "smoke";
     s.me.inv.throws = 1;
+    s.me.inv.medkits = 2;
     s.w.damage(s.me, 999, 2, "pistol");
     const kinds = [...s.w.loot.values()].map((l) => l.kind).sort();
-    expect(kinds).toEqual(["ammo", "bandage", "throwable", "weapon"]);
+    // Two medkits are one pile of two, not two items.
+    expect(kinds).toEqual(["ammo", "bandage", "medkit", "throwable", "weapon"]);
+    expect([...s.w.loot.values()].find((l) => l.kind === "medkit")?.count).toBe(2);
     expect([...s.w.loot.values()].find((l) => l.kind === "weapon")?.weapon).toBe("sniper");
   });
 
@@ -247,6 +296,22 @@ describe("loot", () => {
     expect(w.loot.size).toBeGreaterThan(80);
     const kinds = new Set([...w.loot.values()].map((l) => l.kind));
     expect(kinds.has("weapon") && kinds.has("ammo")).toBe(true);
+  });
+
+  test("with the leaner loot, every spawn still has a real gun within a few seconds' walk", () => {
+    // 2600 units straight-line is about 8 s of walking: well inside the first 15-20 s.
+    for (const map of ["neonCity", "crystalWilds"] as const) {
+      for (let seed = 1; seed <= 10; seed++) {
+        const w = new World(map, seed);
+        for (let i = 1; i <= MATCH.fighters; i++) w.addPlayer(i, `P${i}`, i - 1, true);
+        w.placeSpawns();
+        const guns = [...w.loot.values()].filter((l) => l.kind === "weapon" && l.weapon !== "pistol");
+        for (const p of w.players.values()) {
+          const nearest = Math.min(...guns.map((g) => Math.hypot(g.x - p.x, g.y - p.y)));
+          expect(nearest, `${map} seed ${seed} player ${p.id}`).toBeLessThan(2600);
+        }
+      }
+    }
   });
 });
 
