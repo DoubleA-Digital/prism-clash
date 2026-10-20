@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prism Clash · Chibi Hero Preview (dev)</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=JetBrains+Mono:wght@400;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      html, body { margin: 0; background: #05040d; color: #eef0ff; font-family: Rajdhani, system-ui, sans-serif; }
+      nav { position: fixed; top: 0; left: 0; right: 0; z-index: 5; display: flex; gap: 0.4rem; padding: 0.5rem; background: rgba(5, 4, 13, 0.85); }
+      nav a { color: #8a90c0; text-decoration: none; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-size: 0.8rem; padding: 0.3rem 0.7rem; border-radius: 0.5rem; border: 1px solid rgba(124, 246, 255, 0.2); }
+      nav a.on { color: #fff; border-color: #00f0ff; }
+      canvas { display: block; }
+      #picker { padding: 4rem 2rem 2rem; min-height: 100vh; box-sizing: border-box; }
+      #out { font-family: "JetBrains Mono", monospace; padding: 4rem 2rem; white-space: pre; }
+    </style>
+  </head>
+  <body>
+    <nav id="nav"></nav>
+    <script type="module" src="/src/render/chibi/preview.ts"></script>
+  </body>
+</html>

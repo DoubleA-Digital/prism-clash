@@ -18,3 +18,4 @@ export * from "./powers/registry";
 export * from "./ultimates/registry";
 export * from "./match/rules";
 export * from "./match/draft";
+export * from "./heroes";
