@@ -1,21 +1,30 @@
 // All live rooms by code. Codes are 5 letters without easily confused ones (no I or O).
 
-import { randomInt } from "node:crypto";
-import { log } from "../log";
+import type { Logger, RandomSource } from "../platform";
 import type { Member } from "./member";
 import { Room } from "./room";
 
 const LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 
+export interface RegistryOptions {
+  log: Logger;
+  random: RandomSource;
+  /** false: rooms don't run their own timer (tests step them by hand). */
+  loop?: boolean;
+}
+
 export class RoomRegistry {
   private rooms = new Map<string, Room>();
 
+  constructor(private opts: RegistryOptions) {}
+
   create(testRoom: boolean): Room {
+    const { log, random } = this.opts;
     let code = "";
     do {
-      code = Array.from({ length: 5 }, () => LETTERS[randomInt(LETTERS.length)]).join("");
+      code = Array.from({ length: 5 }, () => LETTERS[random.int(LETTERS.length)]).join("");
     } while (this.rooms.has(code));
-    const room = new Room(code, randomInt(2 ** 31), testRoom);
+    const room = new Room(code, random.int(2 ** 31), testRoom, { loop: this.opts.loop, log });
     room.onEmpty = () => {
       room.destroy();
       this.rooms.delete(code);
@@ -28,6 +37,10 @@ export class RoomRegistry {
 
   get(code: string) {
     return this.rooms.get(code);
+  }
+
+  all(): IterableIterator<Room> {
+    return this.rooms.values();
   }
 
   findByToken(token: string): { room: Room; member: Member } | null {

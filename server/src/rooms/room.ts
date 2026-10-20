@@ -4,13 +4,12 @@
 // The room ticks at 30 Hz; during the match it steps the authoritative World and sends
 // each human a delta snapshot every tick, culled to what they can see.
 
-import type { WebSocket } from "ws";
 import {
   applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
   type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
 import { createBrain, prepareBots, type BotBrain } from "../bots/brain";
-import { log } from "../log";
+import { silentLogger, type Logger, type PeerSocket } from "../platform";
 import { isInt, isNum, sanitizeName } from "../validate";
 import { applyShard, botShardPick, matchResults, openShard, shardReplaces } from "./match";
 import { newMember, resetMatchProgress, type Member } from "./member";
@@ -32,7 +31,8 @@ export class Room {
   world: World | null = null;
   private rng: Rng;
   private bots = new Map<number, BotBrain>();
-  private timer: NodeJS.Timeout | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private log: Logger;
   private nextTime = 0;
   private matchStartTick = 0;
   private victoryAt = 0;
@@ -42,8 +42,9 @@ export class Room {
   private emptySince = 0;
   onEmpty: (() => void) | null = null;
 
-  constructor(code: string, seed: number, testRoom: boolean, opts: { loop?: boolean } = {}) {
+  constructor(code: string, seed: number, testRoom: boolean, opts: { loop?: boolean; log?: Logger } = {}) {
     this.code = code;
+    this.log = opts.log ?? silentLogger;
     this.rng = new Rng(seed);
     this.settings.testRoom = testRoom;
     this.nextTime = performance.now();
@@ -81,7 +82,7 @@ export class Room {
     return name;
   }
 
-  addHuman(id: number, name: string, token: string, ws: WebSocket, ip: string): Member | null {
+  addHuman(id: number, name: string, token: string, ws: PeerSocket, ip: string): Member | null {
     if (this.isFull()) return null;
     const m = newMember(id, this.uniqueName(name || "Player", id), token, false, ip, Date.now());
     m.color = this.freeColor(true);
@@ -94,7 +95,7 @@ export class Room {
   }
 
   /** Same session token within the rejoin window: swap the socket in. */
-  rejoin(m: Member, ws: WebSocket) {
+  rejoin(m: Member, ws: PeerSocket) {
     m.ws = ws;
     m.connected = true;
     m.ackTick = -1;
@@ -102,7 +103,7 @@ export class Room {
     m.aliveSent = "";
     const p = this.world?.players.get(m.id);
     if (p) p.connected = true;
-    log.info(`room ${this.code}: ${m.name} rejoined`);
+    this.log.info(`room ${this.code}: ${m.name} rejoined`);
     this.broadcastRoom();
     this.sendPhase(m);
   }
@@ -375,7 +376,7 @@ export class Room {
     if (this.bots.size) prepareBots(w);
     this.world = w;
     this.victoryAt = 0;
-    log.info(`room ${this.code}: match on ${this.mapId} (seed ${this.seed}), ${this.members.size} fighters`);
+    this.log.info(`room ${this.code}: match on ${this.mapId} (seed ${this.seed}), ${this.members.size} fighters`);
     this.setPhase("countdown", MATCH.countdownSeconds);
   }
 
@@ -484,7 +485,7 @@ export class Room {
     } else if ((ULT_IDS as readonly string[]).includes(g)) {
       p.ult = { id: g as UltId, charge: 100 };
     }
-    log.info(`debug grant ${String(power)} to ${p.name} by ${m.name}`);
+    this.log.info(`debug grant ${String(power)} to ${p.name} by ${m.name}`);
   }
 
   // ---- the loop ----------------------------------------------------------------------

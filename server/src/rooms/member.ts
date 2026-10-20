@@ -1,6 +1,6 @@
 // One seat in a room: a human (with a socket that may drop and rejoin) or a bot.
 
-import type { WebSocket } from "ws";
+import type { PeerSocket } from "../platform";
 import { DEFAULT_HERO, type DraftLoadout, type EntityMap, type HeroId, type InputFrame, type PowerId, type UltId } from "@prism/shared";
 
 export interface Member {
@@ -11,7 +11,7 @@ export interface Member {
   ready: boolean;
   bot: boolean;
   token: string;
-  ws: WebSocket | null;
+  ws: PeerSocket | null;
   connected: boolean;
   disconnectedAt: number;
   joinedAt: number;

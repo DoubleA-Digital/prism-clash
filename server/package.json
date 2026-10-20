@@ -2,6 +2,7 @@
   "name": "@prism/server",
   "private": true,
   "type": "module",
+  "exports": { "./core": "./src/core.ts" },
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/main.ts",
     "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/main.js --packages=external --alias:@prism/shared=../shared/src/index.ts"

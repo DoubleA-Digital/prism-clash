@@ -39,3 +39,23 @@ export function rateCheck(r: RateState, kind: "input" | "other", nowMs: number):
   if (r.strikes >= NET.rateLimit.floodStrikes) return "kick";
   return n > lim ? "drop" : "ok";
 }
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/**
+ * WebSocket Origin policy. The client may be hosted elsewhere (Vercel, a games portal), so any
+ * https page may connect, plus plain-http pages on localhost and the server's own host. A
+ * missing Origin (non-browser clients, tests) is allowed: Origin only protects browsers.
+ */
+export function originAllowed(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true;
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (u.protocol === "https:") return true;
+  if (u.protocol !== "http:") return false;
+  return LOCAL_HOSTS.has(u.hostname) || (!!host && u.host === host);
+}
