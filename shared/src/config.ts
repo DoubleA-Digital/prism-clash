@@ -220,6 +220,28 @@ export const TERRAIN = {
   explosionSolidMult: 1.4,
 } as const;
 
+/** Terrain art (client rendering only; no gameplay effect). */
+export const WORLD_ART = {
+  /** Static ground is pre-rendered into square chunks of this many world units. */
+  chunkSize: 768,
+  /** Chunk texture resolution: pixels per world unit is screen px/unit clamped to this range. */
+  chunkResMin: 0.5,
+  chunkResMax: 1.25,
+  /** Chunks kept in the LRU cache, and how many may be built per frame (more when many are missing). */
+  maxChunks: 20,
+  chunksPerFrame: 1,
+  chunksPerFrameBurst: 3,
+  /** Low-res whole-map fallback texture (px per unit) shown while a chunk is being built. */
+  fallbackRes: 0.18,
+  crosswalk: { gap: 14, depth: 62, inset: 16, stripe: 16 },
+  streetlight: { radius: 250, inset: 20, flickerChance: 0.06 },
+  /** Wall height illusion: the south face drawn under each wall (world units). */
+  wallFace: 12,
+  roof: { insideAlpha: 0.06, fadeSpeed: 7, res: 0.6, cache: 30, signChance: 0.75 },
+  bush: { swayAmp: 2.6, swaySpeed: 1.25, insideAlpha: 0.42 },
+  water: { flowSpeed: 34, rippleSpacing: 54 },
+} as const;
+
 export const MAPS = {
   neonCity: { name: "Neon City", half: 3000 },
   crystalWilds: { name: "Crystal Wilds", half: 3000 },

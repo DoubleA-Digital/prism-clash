@@ -21,6 +21,8 @@ export class MapBuilder {
   bridges: Rect[] = [];
   roofs: Roof[] = [];
   decor: Decor[] = [];
+  doors: Rect[] = [];
+  lights: Circle[] = [];
   lootSpots: LootSpot[] = [];
   /** Areas generators reserved (streets, river banks) that random props must avoid. */
   keepOut: Rect[] = [];
@@ -129,6 +131,7 @@ export class MapBuilder {
       const b = horizontal ? r.x1 : r.y1;
       const c = s === 0 ? r.y0 + T / 2 : s === 2 ? r.y1 - T / 2 : s === 3 ? r.x0 + T / 2 : r.x1 - T / 2;
       const doors = doorSides.has(s) ? this.gapsOn(a, b, 1, DOOR) : [];
+      for (const [dc, dw] of doors) this.doors.push(horizontal ? rect(dc - dw / 2, c - T / 2, dc + dw / 2, c + T / 2) : rect(c - T / 2, dc - dw / 2, c + T / 2, dc + dw / 2));
       // A window (glass panel) on the side, away from the door and the corners.
       let wc = 0;
       if (windows && b - a > 420 && this.rng.next() < 0.7) {
@@ -152,7 +155,9 @@ export class MapBuilder {
       const vertical = w >= h;
       const at = Math.round(vertical ? this.rng.range(r.x0 + w * 0.38, r.x0 + w * 0.62) : this.rng.range(r.y0 + h * 0.38, r.y0 + h * 0.62));
       const [a, b] = vertical ? [r.y0 + T, r.y1 - T] : [r.x0 + T, r.x1 - T];
-      this.wallRun("wall", !vertical, a, b, at, this.gapsOn(a, b, 1, DOOR - 10), 18);
+      const inner = this.gapsOn(a, b, 1, DOOR - 10);
+      for (const [dc, dw] of inner) this.doors.push(vertical ? rect(at - 9, dc - dw / 2, at + 9, dc + dw / 2) : rect(dc - dw / 2, at - 9, dc + dw / 2, at + 9));
+      this.wallRun("wall", !vertical, a, b, at, inner, 18);
       if (vertical) rooms.push({ x0: r.x0 + T, y0: r.y0 + T, x1: at - 9, y1: r.y1 - T }, { x0: at + 9, y0: r.y0 + T, x1: r.x1 - T, y1: r.y1 - T });
       else rooms.push({ x0: r.x0 + T, y0: r.y0 + T, x1: r.x1 - T, y1: at - 9 }, { x0: r.x0 + T, y0: at + 9, x1: r.x1 - T, y1: r.y1 - T });
     } else rooms.push({ x0: r.x0 + T, y0: r.y0 + T, x1: r.x1 - T, y1: r.y1 - T });
@@ -289,7 +294,7 @@ export class MapBuilder {
     const spawns = this.pickSpawns(spawnCount);
     return {
       id: this.id, name: this.name, seed: this.seed, half: this.half, solids: this.solids, grid, bushes: this.bushes, bushGrid,
-      water: this.water, bridges: this.bridges, roofs: this.roofs, decor: this.decor, spawns, lootSpots: this.lootSpots, theme,
+      water: this.water, bridges: this.bridges, roofs: this.roofs, doors: this.doors, lights: this.lights, decor: this.decor, spawns, lootSpots: this.lootSpots, theme,
     };
   }
 

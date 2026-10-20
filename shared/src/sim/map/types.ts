@@ -47,7 +47,7 @@ export interface Roof extends Rect {
   variant: number;
 }
 
-export type DecorKind = "road" | "sidewalk" | "plaza" | "lot" | "floor" | "grass" | "moss" | "sand" | "tile" | "bridge" | "lane";
+export type DecorKind = "road" | "sidewalk" | "plaza" | "lot" | "floor" | "grass" | "moss" | "sand" | "tile" | "bridge" | "lane" | "crosswalk";
 
 /** Flat floor art (no gameplay effect). Drawn into the floor texture. */
 export interface Decor extends Rect {
@@ -76,6 +76,10 @@ export interface MapDef {
   /** Rects inside water that are dry (bridges). */
   bridges: Rect[];
   roofs: Roof[];
+  /** Doorways in building walls (visual: thresholds and door frames). */
+  doors: Rect[];
+  /** Streetlights (visual only): position and glow-pool radius. */
+  lights: Circle[];
   decor: Decor[];
   spawns: { x: number; y: number }[];
   lootSpots: LootSpot[];

@@ -2,9 +2,9 @@
 // (one big building, two buildings, a parking lot, a park or a warehouse yard), the streets
 // get parked hover cars, barrels and loot. Seeded, so every match plays a little different.
 
-import { MATCH, MAPS } from "../../config";
+import { MATCH, MAPS, WORLD_ART } from "../../config";
 import { Rng } from "../../math/rng";
-import { inset, MapBuilder } from "./builder";
+import { inset, MapBuilder, overlaps } from "./builder";
 import type { MapDef, Rect } from "./types";
 
 const PITCH = 1000;
@@ -26,20 +26,42 @@ export function buildNeonCity(seed: number): MapDef {
   const mid = n / 2;
   const isPlaza = (i: number, j: number) => (i === mid - 1 || i === mid) && (j === mid - 1 || j === mid);
 
-  // Street lane markings (decor) along every street center.
+  // Street lane markings (decor) along every street center, broken at the intersections,
+  // with zebra crosswalks on every arm of an intersection.
+  const nearCross = (s: number) => {
+    const g = Math.round((s + half) / PITCH) * PITCH - half;
+    return Math.abs(s - g) < STREET / 2 + 90 || Math.abs(s + 80 - g) < STREET / 2 + 90;
+  };
   for (let k = 0; k <= n; k++) {
     const c = -half + k * PITCH;
     if (k === 0 || k === n) continue;
     for (let s = -half + 60; s < half - 60; s += 160) {
       if (Math.abs(s) < PITCH && Math.abs(c) < PITCH) continue;
+      if (nearCross(s)) continue;
       b.deco("lane", c - 3, s, c + 3, s + 80);
       b.deco("lane", s, c - 3, s + 80, c + 3);
     }
   }
-
   // The plaza first, so nothing else lands on it.
   const plaza: Rect = { x0: blockRect(mid - 1, mid - 1).x0, y0: blockRect(mid - 1, mid - 1).y0, x1: blockRect(mid, mid).x1, y1: blockRect(mid, mid).y1 };
   plazaBlock(b, plaza);
+
+  const cw = WORLD_ART.crosswalk;
+  for (let i = 1; i < n; i++) {
+    for (let j = 1; j < n; j++) {
+      const cx = -half + i * PITCH;
+      const cy = -half + j * PITCH;
+      const e = STREET / 2 + cw.gap;
+      const w = STREET / 2 - cw.inset;
+      const arms: Rect[] = [
+        { x0: cx - w, y0: cy - e - cw.depth, x1: cx + w, y1: cy - e },
+        { x0: cx - w, y0: cy + e, x1: cx + w, y1: cy + e + cw.depth },
+        { x0: cx - e - cw.depth, y0: cy - w, x1: cx - e, y1: cy + w },
+        { x0: cx + e, y0: cy - w, x1: cx + e + cw.depth, y1: cy + w },
+      ];
+      for (const a of arms) if (!overlaps(a, plaza, 20)) b.deco("crosswalk", a.x0, a.y0, a.x1, a.y1);
+    }
+  }
 
   const weights: Record<BlockType, number> = { building: 34, twin: 22, lot: 15, park: 14, yard: 15 };
   for (let j = 0; j < n; j++) {
@@ -73,7 +95,26 @@ export function buildNeonCity(seed: number): MapDef {
       }
     }
   }
+  streetlights(b, n, blockRect, isPlaza);
   return b.build("city", MATCH.fighters);
+}
+
+/** Streetlights on the sidewalk corners of every block (visual only, no RNG). */
+function streetlights(b: MapBuilder, n: number, blockRect: (i: number, j: number) => Rect, isPlaza: (i: number, j: number) => boolean) {
+  const sl = WORLD_ART.streetlight;
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const r = blockRect(i, j);
+      const pts: [number, number][] = isPlaza(i, j)
+        ? []
+        : [[r.x0 + sl.inset, r.y0 + sl.inset], [r.x1 - sl.inset, r.y0 + sl.inset], [r.x0 + sl.inset, r.y1 - sl.inset], [r.x1 - sl.inset, r.y1 - sl.inset]];
+      if (!isPlaza(i, j) && (i + j) % 2 === 0) pts.push([(r.x0 + r.x1) / 2, r.y0 + sl.inset], [(r.x0 + r.x1) / 2, r.y1 - sl.inset]);
+      for (const [x, y] of pts) {
+        if (Math.abs(x) > b.half - 60 || Math.abs(y) > b.half - 60) continue;
+        if (b.free({ x0: x - 10, y0: y - 10, x1: x + 10, y1: y + 10 }, 4)) b.lights.push({ x: Math.round(x), y: Math.round(y), r: sl.radius });
+      }
+    }
+  }
 }
 
 function plazaBlock(b: MapBuilder, r: Rect) {
@@ -87,6 +128,8 @@ function plazaBlock(b: MapBuilder, r: Rect) {
     if (horiz) b.solid("cover", cx + dx - 90, cy + dy - 14, cx + dx + 90, cy + dy + 14);
     else b.solid("cover", cx + dx - 14, cy + dy - 90, cx + dx + 14, cy + dy + 90);
   }
+  // Lamps around the monument.
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) b.lights.push({ x: cx + sx * 330, y: cy + sy * 330, r: WORLD_ART.streetlight.radius });
   // Four planters (bushes) and kiosks with crates.
   const q = (r.x1 - r.x0) / 4;
   for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {

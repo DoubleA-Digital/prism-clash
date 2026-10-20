@@ -168,7 +168,7 @@ export class Renderer {
     if (f.viewer) drawShadows(ctx, map, f.viewer.x, f.viewer.y, bounds);
     this.terrain.drawSolids(ctx, bounds, f.time, true);
     this.terrain.drawBushes(ctx, bounds, f.time, mePos);
-    this.terrain.drawRoofs(ctx, bounds, f.viewer ? roofAt(map, f.viewer.x, f.viewer.y) : -1, f.dt || 0.016);
+    this.terrain.drawRoofs(ctx, bounds, f.viewer ? roofAt(map, f.viewer.x, f.viewer.y) : -1, f.dt || 0.016, f.time);
     if (view) for (const e of view.effects) if (TOP_EFFECTS.has(e.kind)) drawEffect(rc, e);
     if (f.interact) drawLootLabel(ctx, f.interact, invScale, f.interact.kind === "weapon" || f.interact.kind === "throwable" ? `${f.interactKey} — pick up` : null);
 
