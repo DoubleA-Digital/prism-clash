@@ -15,6 +15,8 @@ export interface TacticsContext {
   w: World;
   me: Player;
   target: Player | null;
+  /** Enemies the bot can actually see right now (no wallhacks for area powers). */
+  visible: readonly Player[];
   /** Enemy projectiles that will reach us within ~0.6 s. */
   threats: number;
   /** HP lost over the last 2.5 s. */
@@ -37,7 +39,7 @@ export function leadAim(me: Player, t: Player, speed: number): number {
 }
 
 function nearEnemies(c: TacticsContext, r: number): Player[] {
-  return c.w.enemiesOf(c.me).filter((o) => dist(o, c.me) < r && !c.w.hiddenFrom(c.me, o));
+  return c.visible.filter((o) => o.alive && dist(o, c.me) < r);
 }
 
 function los(c: TacticsContext, t: Player) {
@@ -78,7 +80,7 @@ function powerPlan(c: TacticsContext, id: PowerId): number | null | false {
     case "thirdParty":
       return t && d < 600 && w.hurtByOther(t, me.id) ? null : fighting && c.rand() < 0.25 ? null : false;
     case "bountyBeacon":
-      return w.enemiesOf(me).length > 0 && fighting ? null : false;
+      return c.visible.length > 0 && fighting ? null : false;
     case "voidCloak":
       return hp < 40 || (t && d > 500 && d < 800 && c.rand() < 0.3) ? null : false;
     case "decoySwarm":

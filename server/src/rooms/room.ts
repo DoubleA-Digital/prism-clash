@@ -9,7 +9,7 @@ import {
   applyPick, BOTS, C2S, DEFAULT_HERO, draftOffer, encode, GHOST, HERO_IDS, HUMAN_COLORS, inputFromWire, isHeroId, isMapId, MATCH, NET, PLAY_MAPS, PLAYER_COLORS, POWER_IDS, Rng, S2C, ultOffer, ULT_IDS, World,
   type ClientMsg, type DebugGrant, type Difficulty, type GameEvent, type HeroId, type InputFrame, type MapId, type Phase, type PowerId, type RoomSettings, type RoomState, type ServerMsg, type UltId,
 } from "@prism/shared";
-import { createBrain, type BotBrain } from "../bots/brain";
+import { createBrain, prepareBots, type BotBrain } from "../bots/brain";
 import { log } from "../log";
 import { isInt, isNum, sanitizeName } from "../validate";
 import { applyShard, botShardPick, matchResults, openShard, shardReplaces } from "./match";
@@ -371,6 +371,8 @@ export class Room {
       m.hauntReadyAt = 0;
     }
     w.placeSpawns();
+    // Build the bots' nav grid now, during the countdown, rather than on the first round tick.
+    if (this.bots.size) prepareBots(w);
     this.world = w;
     this.victoryAt = 0;
     log.info(`room ${this.code}: match on ${this.mapId} (seed ${this.seed}), ${this.members.size} fighters`);
