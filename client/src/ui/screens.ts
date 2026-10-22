@@ -41,6 +41,8 @@ export class Screens {
   private menuBtn: HTMLElement | null = null;
   private shard: ReturnType<typeof shardOverlay> | null = null;
   private shardKey = "";
+  /** "Reconnecting…" banner while an online room's connection is down. */
+  private reconnect: HTMLElement | null = null;
   private autoStart = false;
   private prevPhase = "";
   private lastHover: Element | null = null;
@@ -309,6 +311,15 @@ export class Screens {
   private frame() {
     const g = this.game;
     this.current?.tick?.();
+    if (session.reconnecting !== !!this.reconnect) {
+      if (this.reconnect) {
+        this.reconnect.remove();
+        this.reconnect = null;
+      } else {
+        this.reconnect = h("div.toast.reconnect", { role: "status" }, "Connection lost · reconnecting…");
+        this.root.append(this.reconnect);
+      }
+    }
     const inRound = session.phase === "round";
     const wantBoard = inRound && g.input.held("scoreboard");
     if (wantBoard && !this.board) {

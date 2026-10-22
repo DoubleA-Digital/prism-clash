@@ -37,11 +37,16 @@ const TOKEN_KEY = "prism.session";
 /** Shown when an online room can't reach a game server (static deploys with no server, a server that's down). */
 export const OFFLINE_MESSAGE = "Online rooms need the game server — Practice vs Bots works right now";
 const WAKING_MESSAGE = "Connecting to the game server… a sleeping server can take up to a minute to wake.";
+/** The server came back without our room (it restarted or slept: rooms live only in its memory). */
+export const ROOM_LOST_MESSAGE = "The game server restarted, so that room closed. Create a new room to keep playing.";
 /** Status messages shown in the menu's message line in the calm notice style rather than as errors. */
-export const isNotice = (msg: string | null) => msg === OFFLINE_MESSAGE || msg === WAKING_MESSAGE;
+export const isNotice = (msg: string | null) => msg === OFFLINE_MESSAGE || msg === WAKING_MESSAGE || msg === ROOM_LOST_MESSAGE;
 /** Give up on a connection that never opens (a sleeping Render server wakes well inside this). */
 const CONNECT_TIMEOUT_MS = 70_000;
 const WAKING_AFTER_MS = 3_000;
+/** Dropped mid-room: keep retrying this long before giving up on the room (a blip reconnects in seconds). */
+const REJOIN_TIMEOUT_MS = 15_000;
+const RETRY_MS = 1_500;
 
 /** The practice server: the whole authoritative server in a Web Worker (see practice.worker.ts). */
 function practiceWorker(): Worker {
@@ -89,6 +94,10 @@ export class Session {
   private lastInputSend = 0;
   private pendingJoin: { create: boolean; testRoom: boolean; code: string } | null = null;
   private connectTimers: number[] = [];
+  /** The token sent in this connection's hello: a welcome with a different one means the room is gone. */
+  private helloToken: string | null = null;
+  /** While reconnecting to a room we dropped out of: when to give up and go back to the menu. */
+  private rejoinUntil = 0;
   /** Everyone seen in the room this match, so results still name players who left. */
   private known = new Map<number, LobbyPlayer>();
 
@@ -152,6 +161,7 @@ export class Session {
       if (this.lastError === WAKING_MESSAGE) this.lastError = null;
       this.connected = true;
       const token = this.mode === "online" ? this.token : null;
+      this.helloToken = token;
       conn.send({ type: C2S.hello, name: this.name || "Player", token, version: NET.version });
       this.changed();
     });
@@ -160,17 +170,23 @@ export class Session {
       this.clearConnectTimers();
       this.connected = false;
       window.clearInterval(this.pingTimer);
-      if (!opened) {
+      if (this.mode === "online" && this.phase !== "menu") {
+        // Dropped out of a room: retry for a while (the server rejoins us by token), then give up.
+        if (opened) this.rejoinUntil = performance.now() + REJOIN_TIMEOUT_MS;
+        if (performance.now() < this.rejoinUntil) window.setTimeout(() => this.retry(conn), RETRY_MS);
+        else {
+          this.lastError = ROOM_LOST_MESSAGE;
+          this.toMenu();
+        }
+      } else if (!opened) {
         // Never connected: no server here (static deploy) or it's down. Say so, kindly.
         this.pendingJoin = null;
         this.lastError = this.mode === "local" ? reason : OFFLINE_MESSAGE;
         this.toMenu();
-      } else if (this.mode === "local") {
-        if (this.phase !== "menu") {
-          this.lastError = reason;
-          this.toMenu();
-        }
-      } else if (this.phase !== "menu") window.setTimeout(() => this.connect(), 1500);
+      } else if (this.mode === "local" && this.phase !== "menu") {
+        this.lastError = reason;
+        this.toMenu();
+      }
       this.changed();
     });
     if (this.mode === "online") {
@@ -183,10 +199,20 @@ export class Session {
         }, WAKING_AFTER_MS),
         window.setTimeout(() => {
           if (conn === this.conn && !conn.open) conn.close();
-        }, CONNECT_TIMEOUT_MS),
+        }, this.phase !== "menu" ? Math.max(1000, this.rejoinUntil - performance.now()) : CONNECT_TIMEOUT_MS),
       );
     }
     conn.connect(this.transport());
+  }
+
+  /** A reconnect attempt, unless something newer (leaving, a fresh connect) already replaced it. */
+  private retry(dropped: Connection) {
+    if (dropped === this.conn && this.phase !== "menu") this.connect();
+  }
+
+  /** Online and in a room, but the connection dropped: we're trying to get back in. */
+  get reconnecting() {
+    return this.mode === "online" && this.phase !== "menu" && !this.connected;
   }
 
   private clearConnectTimers() {
@@ -360,6 +386,13 @@ export class Session {
     switch (m.type) {
       case S2C.welcome:
         this.myId = m.playerId;
+        this.rejoinUntil = 0;
+        if (this.mode === "online" && this.phase !== "menu" && m.token !== this.helloToken) {
+          // Reconnected, but the server doesn't know our session: it restarted and the room is gone.
+          // Without this the match screen waits forever for snapshots that never come (a black screen).
+          this.lastError = ROOM_LOST_MESSAGE;
+          this.toMenu();
+        }
         // Only online sessions can be rejoined; a practice token would overwrite the real one.
         if (this.mode === "online") {
           this.token = m.token;

@@ -109,6 +109,7 @@ input { font: inherit; color: inherit; }
 .core { display: block; flex: none; pointer-events: none; }
 
 .toast { position: absolute; top: 1.4rem; left: 50%; transform: translateX(-50%); padding: 0.8rem 1.4rem; border-radius: 999px; background: var(--panel-solid); border: 1px solid var(--cyan); box-shadow: 0 0 2rem rgba(0, 240, 255, 0.3); font-weight: 700; letter-spacing: 0.06em; z-index: 40; animation: toast 2.2s var(--ease) both; pointer-events: none; }
+.toast.reconnect { border-color: var(--gold); box-shadow: 0 0 2rem rgba(255, 200, 61, 0.3); animation: none; }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, -1rem) scale(0.9); } 12%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -0.6rem); } }
 
 @media (prefers-reduced-motion: reduce) {
