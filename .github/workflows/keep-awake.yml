@@ -1,7 +1,6 @@
-# Keeps the Render game server awake. Render's free tier sleeps after ~15 minutes without
-# traffic, and a sleeping server wipes its rooms and takes up to a minute to wake.
-# GitHub can start scheduled runs late, so each run pings every 4 minutes for ~12 minutes and
-# the runs overlap; a late start never leaves a 15-minute gap. (Public repo: Actions minutes are free.)
+# Backup keep-awake for the Render game server. The server already pings its own public URL
+# every 10 minutes (server/src/main.ts); GitHub only starts these scheduled runs every few hours,
+# so this is just a safety net. (Public repo: Actions minutes are free.)
 name: Keep game server awake
 
 on:
@@ -25,5 +24,5 @@ jobs:
           for i in 1 2 3 4; do
             curl -fsS --max-time 90 https://prism-clash.onrender.com/healthz || echo "ping $i failed"
             echo
-            [ "$i" -lt 4 ] && sleep 240
+            if [ "$i" -lt 4 ]; then sleep 240; fi
           done

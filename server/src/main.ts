@@ -88,8 +88,19 @@ wss.on("connection", (ws, req) => {
 
 http.listen(PORT, () => log.info(`Prism Clash server on :${PORT} (client: ${existsSync(CLIENT_DIR) ? CLIENT_DIR : "dev mode"})`));
 
+// Render's free tier sleeps after ~15 minutes without inbound traffic, and sleeping wipes every
+// room. GitHub's scheduled pings only arrive every few hours, so the server pings its own public
+// URL (set by Render as RENDER_EXTERNAL_URL); the request goes through Render's edge and counts.
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+const keepAwake = SELF_URL
+  ? setInterval(() => {
+      fetch(new URL("/healthz", SELF_URL), { signal: AbortSignal.timeout(30_000) }).catch((e: unknown) => log.warn(`keep-awake ping failed: ${String(e)}`));
+    }, 10 * 60_000)
+  : undefined;
+
 const shutdown = () => {
   log.info("shutting down");
+  clearInterval(keepAwake);
   wss.close();
   http.close();
   hub.shutdown();
